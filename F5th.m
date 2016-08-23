@@ -19,6 +19,7 @@ S=size(Inp,1);
 
 % loading data
 r1=xlsread('Input\data');
+r1(any(isnan(r1),2),:)=[]; % Remove nan frome the data
 [~,k] =size(r1);
 
 for s=1:S
@@ -31,6 +32,10 @@ for s=1:S
     Tau=Inp.Tau(s);
     nn=Inp.SampleSize(s);
     Resolution=Inp.Resolution(s);
+    if ~(isfinite(a) && isfinite(b) &&isfinite(c) && isfinite(al) && isfinite(bt))
+        warning('not ')
+        continue;
+    end
     if isempty(SenarioName)
         SenarioName=['Sen' num2str(s)];
     end
@@ -42,7 +47,7 @@ for s=1:S
     
     
     % Create Efficiency Curve
-    if JustSimulation
+    if JustSimulation==0
         [Rt,ALPM,xFinal]=findEC(x,A,r,k,nn,Resolution);
     end
     
@@ -82,11 +87,11 @@ for i=1:k
 end
 % Exporting Simulation Data
 Fxl=[mat2dataset(x.','VarNames',Capx),dataset(A.',r.','VarNames',{'ALPM','Rerutn'})];
-export(Fxl,'xlsfile',['out\' SenarioName '\Siml']);
+export(Fxl,'xlsfile',['out\' SenarioName '\Siml.xlsx']);
 % Exporting Simulation Data Efficiency Curve
 if exist('Rt','var')
     Fxl=[mat2dataset(xFinal,'VarNames',Capx),dataset(Rt,ALPM,'VarNames',{'ERetrun','ALPM'})];
-    export(Fxl,'xlsfile',['out\' SenarioName '\EC']);
+    export(Fxl,'xlsfile',['out\' SenarioName '\EC.xlsx']);
 end
 clear Fxl
 % Fxl=cell(k+1+6,2);
@@ -111,19 +116,35 @@ k=size(x,1);
 % plot Graph
 for i=1:k
     figure();
-    [x0r,r0] =Xfine(x(i,:),r,1); % Just Sorted and not refined
-    [x0y,y0]=Xfine(xFinal(:,i),ALPM);
-    [x0A,A0]=Xfine(x(i,:),A);
-    %     [x0r,r0]=Xfine(x(i,:),r);
     hold on
-    %     plot(sortedX,y(I),'b . ',sortedX,A(I),'g . ',sortedX,r(I),'c -  ');
-    plot(x0y,y0,'g',x0A,A0,'b . ',x0r,r0,'c -  ');
+    [x0r,r0] =Xfine(x(i,:),r,1); % Just Sorted and not refined in any case
+    plot(x0r,r0,'c . ');
+    if exist('Rt','var')
+        [x0y,y0]=Xfine(xFinal(:,i),Rt,1);
+        plot(x0y,y0,'g');
+    end
     %plot(xfinal(i), XfX,'r O')
     title('Portfo Analyze');
     xlabel(['Weight of Asset #' num2str(i)]);
-    legend({'Optimum Point','ALPM','Return'})%,})
+    legend({'Return','Optimum Point in Return'})%,})
     hold off
-    saveas(gcf,['out\' SenarioName '\w' num2str(i) '.bmp'])
+    saveas(gcf,['out\' SenarioName '\wR' num2str(i) '.bmp'])
+    close gcf
+    %------------------------------------------------------
+        figure();
+    hold on
+   [x0A,A0]=Xfine(x(i,:),A,JustSort);
+    plot(x0A,A0,'b . ');
+    if exist('Rt','var')
+        [x1y,y1]=Xfine(xFinal(:,i),ALPM,1);
+        plot(x1y,y1,'g');
+    end
+    %plot(xfinal(i), XfX,'r O')
+    title('Portfo Analyze');
+    xlabel(['Weight of Asset #' num2str(i)]);
+    legend({'ALPM','Optimum Point in ALPM'})%,})
+    hold off
+    saveas(gcf,['out\' SenarioName '\wA' num2str(i) '.bmp'])
     close gcf
 end
 % efficient frontier
@@ -213,12 +234,12 @@ y0=[];
 for i=lb:Stp:ub
     m0=mean(x(x>=i & x<i+Stp));
     if ~isnan(m0)
-        x0=[x0; m0];
+        x0=[x0; m0]; %#ok<AGROW>
         [~,I]=find(x>=i & x<i+Stp);
         if isempty(I)
-            y0=[y0,nan];
+            y0=[y0,nan]; %#ok<AGROW>
         else
-            y0=[y0,min(y(:,I))];
+            y0=[y0,min(y(:,I))]; %#ok<AGROW>
         end
     end
 end
@@ -232,14 +253,18 @@ ASigma=xfinal./4;%repmat(0.02,k,1)
 ASigma(xfinal>0.5)=(1-xfinal(xfinal>0.5))./4;
 Sigma=diag(ASigma.^2);
 x=mvnrnd(xfinal,Sigma,nn).';%MU,SIGMA,n
-[y,A,r]=f(xfinal);% Add the final point to Sapmle collection
+y=nan(1,nn+1);
+A=y;
+r=y;
+[y(1),A(1),r(1)]=f(xfinal);% Add the final point to Sapmle collection
 x=[xfinal,x];
 for i=2:nn+1
-    [y0,A0,r0]=f(x(:,i));
-    y=[y,y0];
-    A=[A,A0];
-    r=[r,r0];
+    [y(i),A(i),r(i)]=f(x(:,i));
 end
+x(:,r<-10^9)=[];
+y(r<-10^9)=[];
+A(r<-10^9)=[];
+r(r<-10^9)=[];
 end
 % Eficiency Curve *****************************
 %************************************************* Objective
@@ -327,7 +352,10 @@ for j=1:5
     ub=x0+ASigma(1:k-1);
     
 end
-
+x(:,r<-10^9)=[];
+y(r<-10^9)=[];
+A(r<-10^9)=[];
+r(r<-10^9)=[];
 % display the Results
 % disp('Optimization Result listed below:');
 % for i=1:k
@@ -491,9 +519,9 @@ for l=1:L
         % simulating for the next starting point
         [x,~,A,r]=Simul(xfinal,nn);
         % Augment initail Sample
-        x=[x,xSam];
-        A=[A,ASam];
-        r=[r,rSam];
+        x=[x,xSam]; %#ok<AGROW>
+        A=[A,ASam]; %#ok<AGROW>
+        r=[r,rSam]; %#ok<AGROW>
         % Check whether the xfinal is better than the sampl
         XfX1=min(A(r>Beq-Stp & r<Beq+Stp & isfinite(A)));
         if isempty(XfX1)
@@ -511,6 +539,9 @@ for l=1:L
     home;
     disp([num2str(100*l/(L+1)) ' Percent is completed.']);
 end
+WeI(Rt<-10^9,:)=[];
+ALPM(Rt<-10^9)=[];
+Rt(Rt<-10^9)=[];
 home;
 disp('**************%*********%********* efficieny Curve is completed. ****%********%**********');
 end
