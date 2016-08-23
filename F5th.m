@@ -30,17 +30,24 @@ for s=1:S
     al=Inp.alpha(s);
     bt=Inp.beta(s);
     Tau=Inp.Tau(s);
+    CoverOut=Inp.CoverOut;
+
     nn=Inp.SampleSize(s);
     Resolution=Inp.Resolution(s);
     if ~(isfinite(a) && isfinite(b) &&isfinite(c) && isfinite(al) && isfinite(bt))
         warning('not ')
         continue;
     end
+    
+    
     if isempty(SenarioName)
         SenarioName=['Sen' num2str(s)];
     end
     if isnan(Resolution)
         Resolution=nn;
+    end
+     if isnan(CoverOut)
+        CoverOut=0;
     end
     % find a reliable Sample
     [~,~,x,~,A,r]=OpO(k,nn);
@@ -48,7 +55,7 @@ for s=1:S
     
     % Create Efficiency Curve
     if JustSimulation==0
-        [Rt,ALPM,xFinal]=findEC(x,A,r,k,nn,Resolution);
+        [Rt,ALPM,xFinal]=findEC(x,A,r,k,nn,Resolution,CoverOut);
     end
     
     
@@ -86,11 +93,11 @@ for i=1:k
     Capx{i}=['w' num2str(i)];
 end
 % Exporting Simulation Data
-Fxl=[mat2dataset(x.','VarNames',Capx),dataset(A.',r.','VarNames',{'ALPM','Rerutn'})];
+Fxl=[mat2dataset(x.','VarNames',Capx),dataset(A.',r.','VarNames',{'ALPM','Return'})];
 export(Fxl,'xlsfile',['out\' SenarioName '\Siml.xlsx']);
 % Exporting Simulation Data Efficiency Curve
 if exist('Rt','var')
-    Fxl=[mat2dataset(xFinal,'VarNames',Capx),dataset(Rt,ALPM,'VarNames',{'ERetrun','ALPM'})];
+    Fxl=[mat2dataset(xFinal,'VarNames',Capx),dataset(Rt,ALPM,'VarNames',{'Return','ALPM'})];
     export(Fxl,'xlsfile',['out\' SenarioName '\EC.xlsx']);
 end
 clear Fxl
@@ -131,9 +138,9 @@ for i=1:k
     saveas(gcf,['out\' SenarioName '\wR' num2str(i) '.bmp'])
     close gcf
     %------------------------------------------------------
-        figure();
+    figure();
     hold on
-   [x0A,A0]=Xfine(x(i,:),A,JustSort);
+    [x0A,A0]=Xfine(x(i,:),A,JustSort);
     plot(x0A,A0,'b . ');
     if exist('Rt','var')
         [x1y,y1]=Xfine(xFinal(:,i),ALPM,1);
@@ -364,93 +371,52 @@ r(r<-10^9)=[];
 % disp(['Optimum Value of Objective Function:' ,num2str(round(XfX,3))]);
 disp('************************ Sampling Done *************************');
 end
-%{
-function [Rt,ALPM]=findEC0(xSam,ASam,rSam,k,nn,Resolution)
-disp('Optimization of Efficiency Curve is Started');
-if nargin<3
-    Resolution=10;
-end
-[x,y]=Xfine(xSam,rSam,0);
-lb=[zeros(k-1,1);0];
-ub=[ones(k-1,1);0];
-%[~,~,~,r,~]=Simul(x0,nn);
-MinR=min(rSam(isfinite(rSam)))*(1-0.2);
-MaxR=max(rSam(isfinite(rSam)))*(1+0.2);
-Stp=(MaxR-MinR)/Resolution;
-fI=min(ASam(rSam>MinR-Stp & rSam<MinR+Stp & isfinite(ASam)));
-if isempty(fI)
-    x0=(1/k).*ones(k,1);
-else
-    x0=xSam(:,ASam==fI);
-    x0=x0(:,1);
+%***********************************************  Find outlier data
+function [OutX,OutA,OutR]=Outer(Rt,ALPM,xSam,ASam,rSam)
+%% Points Inside Convex Polygon
+%%
+% Define the x and y coordinates of polygon vertices to create a pentagon.
+yv=Rt;
+xv=ALPM;
+%Completed the curve
+yv(end+1)=-inf;
+xv(end+1)=inf;
+yv(end+1)=inf;
+xv(end+1)=inf;
+% Sort data
+[yv,I]=sort(yv);
+xv=xv(I);
+
+% Define x and y coordinates of Simulation data
+yq=rSam;
+xq=ASam;
+
+%%
+% Determine whether each point lies inside or on the edge of the polygon
+% area. Also determine whether any of the points lie on the edge of the
+% polygon area.
+[in,on] = inpolygon(xq,yq,xv,yv);
+OutA=xq(~(in | on));
+OutR=yq(~(in | on));
+OutX=xSam(~(in | on),:);
+% refine data
+OutA=OutA(isfinite(OutR));
+OutX=OutX(isfinite(OutR),:);
+OutR=OutR(isfinite(OutR));
+[OutR,ia]=unique(OutR);
+OutA=OutA(ia);
+OutX=OutX(ia,:);
+%%
 end
 
-global Beq
-Rt=nan(Resolution+2,1);
-ALPM=Rt;
-% Optimization
-% we use global search instead of local ones
-options = optimoptions(@fmincon,'Algorithm','sqp','ConstraintTolerance',10^-4); % this interior-point algorithm result was so good in the case of two asset model
-% (Other available algorithms: 'active-set', 'sqp', 'trust-region-reflective', 'interior-point')
-% First satring values
-i=0;
-XfX0=-inf;
-for Beq=MinR:Stp:MaxR
-    xfinal0=ones(k,1);
-    for j=1:3
-        problem = createOptimProblem('fmincon','objective',...
-            @fEFO,'x0',x0,'lb',lb,'ub',ub,'options',options,'nonlcon',@fEFC);%,'ConstraintTolerance',10^-4);
-        % x0 is the stating point, lb the lower bound and up the upper bound in this case nothing has to be changed by user
-        % the lastinput is the shadow price or lagrange multiplier
-        gs = GlobalSearch('NumStageOnePoints',400,'NumTrialPoints',2000);
-        disp(['Solving itration #' num2str(j)]);
-        % xfinal is the optimum weght for asset one
-        % XfX is the Valu of objective function
-        [xfinal, XfX,exitflag] = run(gs,problem);
-        xfinal(k)=1-sum(xfinal(1:k-1)); % Correct the Last Element
-        if XfX<XfX0 || exitflag~=-2
-            %             XfX=XfX0;
-            %xfinal=xfinal0;
-            %break;
-            XfX0=XfX;
-            xfinal0=xfinal;
-        end
-        % simulating for the next starting point
-        [x,~,A,r,ASigma]=Simul(xfinal,nn);
-        % Augment initail Sample
-        x=[x,xSam];
-        A=[A,ASam];
-        r=[r,rSam];
-        % Check whether the xfinal is better than the sampl
-        XfX1=min(A(r>Beq-Stp & r<Beq+Stp & isfinite(A)));
-        if isempty(XfX1)
-            break;
-        elseif XfX<=XfX1
-            break;
-        end
-        
-        [~,I]=find(A==XfX1);
-        
-        x0=x(:,I(1));
-        lb=x0-ASigma;
-        ub=x0+ASigma;
-        lb(end)=0;ub(end)=0; % Correct the Last Element %% may be remove in the next version
-    end
-    
-    i=i+1;
-    [~,ALPM(i),Rt(i)]=f(xfinal0);
-    home;
-    disp([num2str(100*i/(Resolution+1)) ' Percent is completed.']);
-end
-home;
-disp('efficieny Curve is completed.');
-end
-%}
 %***********************************************  Efficiency Curve Biulder
-function [Rt,ALPM,WeI]=findEC(xSam,ASam,rSam,k,nn,Resolution)
+function [Rt,ALPM,WeI]=findEC(xSam,ASam,rSam,k,nn,Resolution,CoverOlp)
 disp('Optimization of Efficiency Curve is Started');
 global Beq
-if nargin<3
+if nargin<7
+    CoverOlp=0;
+end
+if nargin<6
     Resolution=nan;
 end
 xSam(:,~isfinite(rSam))=[];
@@ -470,6 +436,7 @@ if Resolution>1
 else
     Stp= 1;
 end
+%%
 rSam0=[rSam0(1:Stp:L-1),rSam0(L)];
 ia=[ia(1:Stp:L-1).',ia(L)];
 L=length(rSam0);
@@ -542,6 +509,95 @@ end
 WeI(Rt<-10^9,:)=[];
 ALPM(Rt<-10^9)=[];
 Rt(Rt<-10^9)=[];
+%%
+%------------------ Find Oulier point
+if CoverOlp==1
+    beep
+    disp('/\/\/\/\/\/\/\/\/\/\/\/\/\ Covering Oulier Point /\/\/\/\/\/\/\/\/\/\/\');
+    [OutX,~,OutR]=Outer(Rt,ALPM,xSam.',ASam.',rSam.');
+    rSam0=OutR.';
+    L=length(rSam0);
+    disp(['/*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\ ' num2str(L) ' outlaw point found. /*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\']);
+    %A=OutA.';
+    x00=OutX.';
+    
+    RtA=nan(L,1);
+    ALPMA=RtA;
+    WeIA=nan(L,k);
+    
+    lb=[zeros(k-1,1);0];
+    ub=[ones(k-1,1);0];
+    
+    % Optimization
+    % we use global search instead of local ones
+    options = optimoptions(@fmincon,'Algorithm','sqp','ConstraintTolerance',10^-4); % this interior-point algorithm result was so good in the case of two asset model
+    % (Other available algorithms: 'active-set', 'sqp', 'trust-region-reflective', 'interior-point')
+    % First satring values
+    
+    XfX0=-inf;
+    Stp=10^-4;
+    for l=1:L
+        Beq= rSam0(l);
+        x0=x00(:,l);
+        xfinal0=x0;%xfinal00(:,i);
+        for j=1:3
+            problem = createOptimProblem('fmincon','objective',...
+                @fEFO,'x0',x0,'lb',lb,'ub',ub,'options',options,'nonlcon',@fEFC);%,'ConstraintTolerance',10^-4);
+            % x0 is the stating point, lb the lower bound and up the upper bound in this case nothing has to be changed by user
+            % the lastinput is the shadow price or lagrange multiplier
+            gs = GlobalSearch('NumStageOnePoints',1000,'NumTrialPoints',4000);
+            disp(['Solving itration #' num2str(j)]);
+            % xfinal is the optimum weght for asset one
+            % XfX is the Valu of objective function
+            [xfinal, XfX,exitflag] = run(gs,problem);
+            xfinal(k)=1-sum(xfinal(1:k-1)); % Correct the Last Element
+            if XfX<XfX0 || exitflag~=-2 || exitflag~=-8
+                %             XfX=XfX0;
+                %xfinal=xfinal0;
+                %break;
+                XfX0=XfX;
+                xfinal0=xfinal;
+            end
+            % simulating for the next starting point
+            [x,~,A,r]=Simul(xfinal,nn);
+            % Augment initail Sample
+            x=[x,xSam]; %#ok<AGROW>
+            A=[A,ASam]; %#ok<AGROW>
+            r=[r,rSam]; %#ok<AGROW>
+            % Check whether the xfinal is better than the sampl
+            XfX1=min(A(r>Beq-Stp & r<Beq+Stp & isfinite(A)));
+            if isempty(XfX1)
+                break;
+            elseif XfX<=XfX1
+                break;
+            end
+            
+            [~,I]=find(A==XfX1);
+            
+            x0=x(:,I(1));
+        end
+        [~,ALPMA(l),RtA(l)]=f(xfinal0);
+        WeIA(l,:)=xfinal0.';
+        home;
+        disp([num2str(100*l/(L+1)) ' Percent is completed.']);
+    end
+    WeIA(Rt<-10^9,:)=[];
+    ALPMA(Rt<-10^9)=[];
+    RtA(Rt<-10^9)=[];
+    
+    WeI=[WeI;WeIA];
+    ALPM=[ALPM;ALPMA];
+    Rt=[Rt;RtA];
+end
+% refine data
+ALPM=ALPM(isfinite(Rt));
+WeI=WeI(isfinite(Rt),:);
+Rt=Rt(isfinite(Rt));
+[Rt,ia]=unique(Rt);
+ALPM=ALPM(ia);
+WeI=WeI(ia,:);
+%%
 home;
 disp('**************%*********%********* efficieny Curve is completed. ****%********%**********');
 end
+
