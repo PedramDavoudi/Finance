@@ -174,7 +174,21 @@ hold off
 saveas(gcf,['out\' SenarioName '\EC.bmp'])
 %close gcf
 end
-%$$$$$$$$$$$$$$$$$$$$$$$######
+%$$$$$$$$$$$$$$$$$$$$$$$###### Post Modern portfo Managment
+function [out]=MPM
+% Define portfo 
+global r1
+p0 = Portfolio('assetmean', mean(r1,1).', 'assetcovar', r1.'*r1, 'lowerbound', 0, 'lowerbudget', 1, 'upperbudget', 1);
+[rsk0,ret0]=p0.plotFrontier;
+out.MV=[rsk0,ret0];
+p1 = PortfolioCVaR('Scenarios', r1, 'LowerBound', 0, 'Budget', 1, 'ProbabilityLevel', 0.95);
+[rsk1,ret1]=p1.plotFrontier;
+out.CV=[rsk1,ret1];
+p2 = PortfolioMAD('Scenarios', r1,'LowerBound', 0, 'LowerBudget', 1, 'UpperBudget', 1);
+[rsk2,ret2]=plotFrontier(p2);
+out.MAD=[rsk2,ret2];
+close all
+end
 %####################### Sampler Objective Function
 function [y,A,rB]=f(w1)
 % check the weights illegal usage
@@ -551,10 +565,11 @@ if CoverOlp==1
     disp('/\/\/\/\/\/\/\/\/\/\/\/\/\ Covering Oulier Point /\/\/\/\/\/\/\/\/\/\/\');
     [OutX,~,OutR]=Outer(Rt,ALPM,xSam.',ASam.',rSam.');
     rSam0=OutR.';
+    rSam0=[0,rSam0];
     L=length(rSam0);
     disp(['/*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\ (' num2str(L) ') outlaw points found. /*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\']);
     %A=OutA.';
-    x00=OutX.';
+    x00=[repmat(0.5,k,1),OutX.'];
     
     RtA=nan(L,1);
     ALPMA=RtA;
@@ -634,19 +649,4 @@ WeI=WeI(ia,:);
 %%
 home;
 disp('**************%*********%********* efficieny Curve is completed. ****%********%**********');
-end
-
-function [out]=MPM
-% Define portfo 
-global r1
-p0 = Portfolio('assetmean', mean(r1,1).', 'assetcovar', r1.'*r1, 'lowerbound', 0, 'lowerbudget', 1, 'upperbudget', 1);
-[rsk0,ret0]=p0.plotFrontier;
-out.MV=[rsk0,ret0];
-p1 = PortfolioCVaR('Scenarios', r1, 'LowerBound', 0, 'Budget', 1, 'ProbabilityLevel', 0.95);
-[rsk1,ret1]=p1.plotFrontier;
-out.CV=[rsk1,ret1];
-p2 = PortfolioMAD('Scenarios', r1,'LowerBound', 0, 'LowerBudget', 1, 'UpperBudget', 1);
-[rsk2,ret2]=plotFrontier(p2);
-out.MAD=[rsk2,ret2];
-close all
 end
