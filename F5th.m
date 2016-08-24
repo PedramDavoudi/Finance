@@ -1,15 +1,14 @@
 function F5th
 % al & bt must be grater than one.. according to paper
 tic;
-global r1 a b c al bt Tau
+global r1 alpha b c a beta Tau
 % Inputs
-% a=0.1;
-% b=0.2;
-% c=0.1;
-% al=1.5;
-% bt=3;
-% Tau=nan; % the treshold valu, nan= mean of data
-% nn=20; % the number of samples to plot the graphs
+% alpha the coef of LPM
+% a the power of LPM 
+% beta the coef of UMP 
+% b the coef of UMP
+% c the power of UMP
+
 %
 % Resolution=1;
 JustSimulation=0;
@@ -22,19 +21,20 @@ r1=xlsread('Input\data');
 r1(any(isnan(r1),2),:)=[]; % Remove nan frome the data
 [~,k] =size(r1);
 
+
 for s=1:S
     SenarioName=Inp.SenarioName{s};
     a=Inp.a(s);
     b=Inp.b(s);
     c=Inp.c(s);
-    al=Inp.alpha(s);
-    bt=Inp.beta(s);
+    alpha=Inp.alpha(s);
+    beta=Inp.beta(s);
     Tau=Inp.Tau(s);
     CoverOut=Inp.CoverOut;
 
     nn=Inp.SampleSize(s);
     Resolution=Inp.Resolution(s);
-    if ~(isfinite(a) && isfinite(b) &&isfinite(c) && isfinite(al) && isfinite(bt))
+    if ~(isfinite(a) && isfinite(b) &&isfinite(c) && isfinite(alpha) && isfinite(beta))
         warning('not ')
         continue;
     end
@@ -59,11 +59,11 @@ for s=1:S
     end
     
     
-    
-    % plot Grapgh
+    PM=MPM();
+   % plot Grapgh
     if exist('Rt','var')
-        Expt(x,A,r,SenarioName,Rt,ALPM,xFinal);% Export Simulation data to excell file
-        Grph(JustSort,x,A,r,SenarioName,Rt,ALPM,xFinal);% plot Graph
+        Expt(x,A,r,SenarioName,PM,Rt,ALPM,xFinal);% Export Simulation data to excell file
+        Grph(JustSort,x,A,r,SenarioName,PM,Rt,ALPM,xFinal);% plot Graph
     else
         Expt(x,A,r,SenarioName);% Export Simulation data to excell file
         Grph(JustSort,x,A,r,SenarioName);% plot Graph
@@ -73,8 +73,8 @@ end
 toc
 end
 % Data Exporting
-function  Expt(x,A,r,SenarioName,Rt,ALPM,xFinal)
-global a b c al bt Tau
+function  Expt(x,A,r,SenarioName,PM,Rt,ALPM,xFinal)
+global alpha b beta a c Tau
 
 if ~exist('SenarioName','var')
     SenarioName='Sen';
@@ -109,13 +109,13 @@ clear Fxl
 %Fxl(k+1,1)={'ObjVal'};
 %Fxl(k+1,2)={XfX};
 Fxl=table();
-Fxl.ParameterName={'a';'b';'c';'al';'bt';'Tau'};
-Fxl.ParameterValue=[a;b;c;al;bt;Tau];
-writetable(Fxl,['out\' SenarioName '\tabledata.txt'])
+Fxl.ParameterName={'a';'alpha';'b';'beta';'c';'Tau'};
+Fxl.ParameterValue=[a;alpha;b;beta;c;Tau];
+writetable(Fxl,['out\' SenarioName '\table.txt'])
 
 end
 % Graph Creater
-function Grph(JustSort,x,A,r,SenarioName,Rt,ALPM,xFinal)
+function Grph(JustSort,x,A,r,SenarioName,PM,Rt,ALPM,xFinal)
 if ~exist('SenarioName','var')
     SenarioName='Sen';
 end
@@ -162,12 +162,14 @@ hold on
 %[~,A0,r0]=f(xfinal);
 plot(A,r,'b . ');%,A0, r0,'r O');
 if exist('Rt','var')
-    plot(ALPM,Rt,'g');
+    plot(ALPM,Rt,'g',PM.MV(:,1),PM.MV(:,2),'b',PM.CV(:,1),PM.CV(:,2),'r',PM.MAD(:,1),PM.MAD(:,2),'d');
 end
+
+
 title('Efficient Frontier');
 ylabel('Portfo Expected Return');
 xlabel('Portfo ALPM');
-%legend({'R/R','Optimum Point'})
+legend({'Simul','ALPM','Mean-Variance','CVaR','MAD'})
 hold off
 saveas(gcf,['out\' SenarioName '\EC.bmp'])
 %close gcf
@@ -177,7 +179,7 @@ end
 function [y,A,rB]=f(w1)
 % check the weights illegal usage
 % the number of degree of freedome is k-1
-global r1 a b c al bt Tau
+global r1 alpha b beta a c Tau
 
 % Extract number of Obsevation
 [n,k] =size(r1);
@@ -202,10 +204,10 @@ end
 r=r1*w1;
 
 % Expected return
-if ~isfinite(Tau)
-    rB=mean(r);
+if isfinite(Tau)
+   rB=Tau; 
 else
-    rB=Tau;
+    rB=mean(r);
 end
 rBar=repmat(rB,n,1);
 %
@@ -213,7 +215,8 @@ LPM=max(rBar-r,0);
 UMP=max(r-rBar,0);
 pminus=sum(LPM>0)/n;
 Pplus=1-pminus;
-A= a*pminus*sum(LPM.^al)-b*c*Pplus*sum(UMP.^bt);
+A= alpha*pminus*sum(LPM.^a)-b*Pplus*beta*sum(UMP.^c);
+
 rB=mean(r);
 %ObjectiveFunction
 y=A-2*rB;%lambda
@@ -258,6 +261,9 @@ end
 function [x,y,A,r,ASigma]=Simul(xfinal,nn)
 ASigma=xfinal./4;%repmat(0.02,k,1)
 ASigma(xfinal>0.5)=(1-xfinal(xfinal>0.5))./4;
+% Extreme Result ignorance
+ASigma(ASigma<10^-4)=0.25;
+%
 Sigma=diag(ASigma.^2);
 x=mvnrnd(xfinal,Sigma,nn).';%MU,SIGMA,n
 y=nan(1,nn+1);
@@ -282,11 +288,11 @@ function [A]=fEFO(w1)
 
 end
 %********************************************** Constraint
-function [c,ceq]=fEFC(w1)
+function [c,ceq]=fEFC0(w1)
 % c is inequlity less than zero
 % ceq is equality with zero
 
-global r1 Beq%a b c al bt Tau
+global r1 Beq%alpha b c a c Tau
 
 % Extract number of Obsevation
 [~,k] =size(r1);
@@ -310,14 +316,42 @@ ceq=mean(r)-Beq;
 
 
 end
+function [c,ceq]=fEFC(w1)
+% c is inequlity less than zero
+% ceq is equality with zero
+
+global r1 Beq%alpha b c a c Tau
+
+% Extract number of Obsevation
+[~,k] =size(r1);
+c=-1;
+ceq=[];
+% Check length of w1
+if length(w1)<k
+    w1(end+1:k,1)=zeros(k-length(w1),1);
+end
+w1(k+1:end)=[];
+% build final Weight
+w1(k,1)=1-sum(w1(1:k-1));
+% check
+if any(w1>1) || any(w1<0)
+    return;
+end
+
+% Calc Portfo
+r=r1*w1;
+c=Beq-mean(r);
+
+
+end
 %***********************************************  Sample Biulder
 function [xfinal,XfX,x,y,A,r]=OpO(k,nn)
 % this function just replicate a good sample
 % Optimization
 disp('Optimization of Objective Function To Build qualified Sample Started');
 % we use global search instead of local ones
-options = optimoptions(@fmincon,'Algorithm','sqp'); % this interior-point algorithm result was so good in the case of two asset model
-% (Other available algorithms: 'active-set', 'sqp', 'trust-region-reflective', 'interior-point')
+options = optimoptions(@fmincon, 'Algorithm','sqp'); % this interior-point algorithm result was so good in the case of two asset model
+% (Other available algorithms: 'active-set', 'sqp', 'trust-region-reflective', 'interior-point')'UseParallel', true
 % First satring values
 
 x0=(1/k).*ones(k-1,1);
@@ -456,7 +490,7 @@ ub=[ones(k-1,1);0];
 % Optimization
 % we use global search instead of local ones
 options = optimoptions(@fmincon,'Algorithm','sqp','ConstraintTolerance',10^-4); % this interior-point algorithm result was so good in the case of two asset model
-% (Other available algorithms: 'active-set', 'sqp', 'trust-region-reflective', 'interior-point')
+% (Other available algorithms: 'active-set', 'sqp', 'trust-region-reflective', 'interior-point')'UseParallel', true, 
 % First satring values
 
 XfX0=-inf;
@@ -513,11 +547,12 @@ Rt(Rt<-10^9)=[];
 %------------------ Find Oulier point
 if CoverOlp==1
     beep
+    home;
     disp('/\/\/\/\/\/\/\/\/\/\/\/\/\ Covering Oulier Point /\/\/\/\/\/\/\/\/\/\/\');
     [OutX,~,OutR]=Outer(Rt,ALPM,xSam.',ASam.',rSam.');
     rSam0=OutR.';
     L=length(rSam0);
-    disp(['/*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\ ' num2str(L) ' outlaw point found. /*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\']);
+    disp(['/*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\ (' num2str(L) ') outlaw points found. /*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\']);
     %A=OutA.';
     x00=OutX.';
     
@@ -530,7 +565,7 @@ if CoverOlp==1
     
     % Optimization
     % we use global search instead of local ones
-    options = optimoptions(@fmincon,'Algorithm','sqp','ConstraintTolerance',10^-4); % this interior-point algorithm result was so good in the case of two asset model
+   % options = optimoptions(@fmincon,'UseParallel', true, 'UseCompletePoll', true, 'UseVectorized', false,'Algorithm','sqp','ConstraintTolerance',10^-4); % this interior-point algorithm result was so good in the case of two asset model
     % (Other available algorithms: 'active-set', 'sqp', 'trust-region-reflective', 'interior-point')
     % First satring values
     
@@ -601,3 +636,17 @@ home;
 disp('**************%*********%********* efficieny Curve is completed. ****%********%**********');
 end
 
+function [out]=MPM
+% Define portfo 
+global r1
+p0 = Portfolio('assetmean', mean(r1,1).', 'assetcovar', r1.'*r1, 'lowerbound', 0, 'lowerbudget', 1, 'upperbudget', 1);
+[rsk0,ret0]=p0.plotFrontier;
+out.MV=[rsk0,ret0];
+p1 = PortfolioCVaR('Scenarios', r1, 'LowerBound', 0, 'Budget', 1, 'ProbabilityLevel', 0.95);
+[rsk1,ret1]=p1.plotFrontier;
+out.CV=[rsk1,ret1];
+p2 = PortfolioMAD('Scenarios', r1,'LowerBound', 0, 'LowerBudget', 1, 'UpperBudget', 1);
+[rsk2,ret2]=plotFrontier(p2);
+out.MAD=[rsk2,ret2];
+close all
+end
