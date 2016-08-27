@@ -59,7 +59,7 @@ for s=1:S
     end
     
     
-    PM=MPM();
+    PM=MPM(Resolution);
     % plot Grapgh
     if exist('Rt','var')
         Expt(x,A,r,SenarioName,PM,Rt,ALPM,xFinal);% Export Simulation data to excell file
@@ -95,22 +95,21 @@ end
 % Exporting Simulation Data
 Fxl=[mat2dataset(x.','VarNames',Capx),dataset(A.',r.','VarNames',{'ALPM','Return'})];
 export(Fxl,'xlsfile',['out\' SenarioName '\Siml.xlsx']);
+clear Fxl
 % Exporting Simulation Data Efficiency Curve
 if exist('Rt','var')
     Fxl=[mat2dataset(xFinal,'VarNames',Capx),dataset(Rt,ALPM,'VarNames',{'Return','ALPM'})];
-    export(Fxl,'xlsfile',['out\' SenarioName '\EC.xlsx']);
+    export(Fxl,'xlsfile',['out\' SenarioName '\EFA.xlsx'])
 end
-clear Fxl
 % Fxl=cell(k+1+6,2);
 if exist('PM','var')
-Fxl=table(PM.MV(:,1),PM.MV(:,2),PM.CV(:,1),PM.CV(:,2),PM.MAD(:,1),PM.MAD(:,2),'VariableNames',{'Mean_Var_Risk' 'Mean_Var_Return' 'CVaR_Risk' 'CVaR_Return' 'Absolute_Deviation_Risk' 'Absolute_Deviation_Return'});
-writetable(Fxl,['out\' SenarioName '\MPM.xlsx'])
+    Fxl0=dataset(PM.MV(:,1),PM.MV(:,2),PM.CV(:,1),PM.CV(:,2),PM.MAD(:,1),PM.MAD(:,2),'VarNames',{'Mean_Var_Risk' 'Mean_Var_Return' 'CVaR_Risk' 'CVaR_Return' 'Absolute_Deviation_Risk' 'Absolute_Deviation_Return'});
+    export(Fxl0,'xlsfile',['out\' SenarioName '\EFM.xlsx'])
 end
-%Fxl(1:k,1)=Capx.';
-%Fxl(1:k,2)=num2cell(xfinal);
 
-%Fxl(k+1,1)={'ObjVal'};
-%Fxl(k+1,2)={XfX};
+
+
+
 Fxl=table();
 Fxl.ParameterName={'a';'alpha';'b';'beta';'c';'Tau'};
 Fxl.ParameterValue=[a;alpha;b;beta;c;Tau];
@@ -122,6 +121,9 @@ function Grph(JustSort,x,A,r,SenarioName,PM,Rt,ALPM,xFinal)
 if ~exist('SenarioName','var')
     SenarioName='Sen';
 end
+x=[x,xFinal.'];
+A=[A,ALPM.'];
+r=[r,Rt.'];
 k=size(x,1);
 % plot Graph
 for i=1:k
@@ -161,13 +163,16 @@ end
 [r,A]=Xfine(r,A,JustSort);
 % [sortedr,I] = sort(r);
 figure();
-hold on
+
 %[~,A0,r0]=f(xfinal);
 plot(A,r,'b . ');%,A0, r0,'r O');
+hold on
 if exist('Rt','var')
-    plot(ALPM,Rt,'g',PM.MV(:,1),PM.MV(:,2),'b',PM.CV(:,1),PM.CV(:,2),'r',PM.MAD(:,1),PM.MAD(:,2),'d');
+    plot(ALPM,Rt,'g');
 end
-
+if exist('PM','var')
+    plot(PM.MV(:,1),PM.MV(:,2),'b',PM.CV(:,1),PM.CV(:,2),'r',PM.MAD(:,1),PM.MAD(:,2),'d');
+end
 
 title('Efficient Frontier');
 ylabel('Portfo Expected Return');
@@ -178,17 +183,22 @@ saveas(gcf,['out\' SenarioName '\EC.bmp'])
 %close gcf
 end
 %$$$$$$$$$$$$$$$$$$$$$$$###### Post Modern portfo Managment
-function [out]=MPM
+function [out]=MPM(NumPoint)
 % Define portfo
 global r1
-p0 = Portfolio('assetmean', mean(r1,1).', 'assetcovar', r1.'*r1, 'lowerbound', 0, 'lowerbudget', 1, 'upperbudget', 1);
-[rsk0,ret0]=p0.plotFrontier;
+p0 = Portfolio('assetmean', mean(r1,1).', 'assetcovar', r1.'*r1, 'lb', 0.25, 'ub', 0.55);
+[rsk0,ret0]=p0.plotFrontier(NumPoint);
 out.MV=[rsk0,ret0];
-p1 = PortfolioCVaR('Scenarios', r1, 'LowerBound', 0, 'Budget', 1, 'ProbabilityLevel', 0.95);
-[rsk1,ret1]=p1.plotFrontier;
+p1 = PortfolioCVaR;
+p1 = simulateNormalScenariosByData(p1, r1, 2000);
+p1 = PortfolioCVaR(p1,'lb', 0.25,'ub',0.55,  'ProbabilityLevel', 0.95); %'Scenarios', r1, 'Budget', 1,
+[rsk1,ret1]=p1.plotFrontier(NumPoint);
 out.CV=[rsk1,ret1];
-p2 = PortfolioMAD('Scenarios', r1,'LowerBound', 0, 'LowerBudget', 1, 'UpperBudget', 1);
-[rsk2,ret2]=plotFrontier(p2);
+p2 = PortfolioMAD;
+p2 = simulateNormalScenariosByData(p2, r1, 2000);
+p2 = PortfolioMAD(p2,'lb', 0.25,'ub', 0.55);% 'Scenarios', r1,
+
+[rsk2,ret2]=plotFrontier(p2,NumPoint);
 out.MAD=[rsk2,ret2];
 close all
 end
@@ -276,6 +286,7 @@ y=y0;%(I);
 end
 % Simulating Sample around xfinal
 function [x,y,A,r,ASigma]=Simul(xfinal,nn)
+k=size(xfinal,1);
 ASigma=xfinal./4;%repmat(0.02,k,1)
 ASigma(xfinal>0.5)=(1-xfinal(xfinal>0.5))./4;
 % Extreme Result ignorance
@@ -283,6 +294,8 @@ ASigma(ASigma<10^-4)=0.25;
 %
 Sigma=diag(ASigma.^2);
 x=mvnrnd(xfinal,Sigma,nn).';%MU,SIGMA,n
+x=abs(x);
+x=x./repmat(sum(x,1),k,1);
 y=nan(1,nn+1);
 A=y;
 r=y;
@@ -543,7 +556,7 @@ options = optimoptions(@fmincon,'Algorithm','sqp','ConstraintTolerance',10^-4); 
 % First satring values
 
 XfX0=-inf;
-Stp=10^-4;
+%Stp=10^-4;
 for l=1:L
     Beq= rSam0(l);
     x0=x00(:,l);
@@ -620,7 +633,6 @@ if CoverOlp==1
     % First satring values
     
     XfX0=-inf;
-    Stp=10^-4;
     for l=1:L
         Beq= rSam0(l);
         x0=x00(:,l);
