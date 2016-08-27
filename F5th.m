@@ -612,79 +612,15 @@ if CoverOlp==1
     home;
     disp('/\/\/\/\/\/\/\/\/\/\/\/\/\ Covering Oulier Point /\/\/\/\/\/\/\/\/\/\/\');
     [OutX,~,OutR]=Outer(Rt,ALPM,xSam.',ASam.',rSam.');
-    rSam0=OutR.';
-    rSam0=[0,rSam0];
-    L=length(rSam0);
+    L=length(OutR);
     disp(['/*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\ (' num2str(L) ') outlaw points found. /*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\']);
-    %A=OutA.';
-    x00=[repmat(0.5,k,1),OutX.'];
-    
-    RtA=nan(L,1);
-    ALPMA=RtA;
-    WeIA=nan(L,k);
-    
-    lb=[zeros(k-1,1);0];
-    ub=[ones(k-1,1);0];
-    
-    % Optimization
-    % we use global search instead of local ones
-    % options = optimoptions(@fmincon,'UseParallel', true, 'UseCompletePoll', true, 'UseVectorized', false,'Algorithm','sqp','ConstraintTolerance',10^-4); % this interior-point algorithm result was so good in the case of two asset model
-    % (Other available algorithms: 'active-set', 'sqp', 'trust-region-reflective', 'interior-point')
-    % First satring values
-    
-    XfX0=-inf;
-    for l=1:L
-        Beq= rSam0(l);
-        x0=x00(:,l);
-        xfinal0=x0;%xfinal00(:,i);
-        for j=1:3
-            problem = createOptimProblem('fmincon','objective',...
-                @fEFO,'x0',x0,'lb',lb,'ub',ub,'options',options,'nonlcon',@fEFC);%,'ConstraintTolerance',10^-4);
-            % x0 is the stating point, lb the lower bound and up the upper bound in this case nothing has to be changed by user
-            % the lastinput is the shadow price or lagrange multiplier
-            gs = GlobalSearch('NumStageOnePoints',1000,'NumTrialPoints',4000);
-            disp(['Solving itration #' num2str(j)]);
-            % xfinal is the optimum weght for asset one
-            % XfX is the Valu of objective function
-            [xfinal, XfX,exitflag] = run(gs,problem);
-            xfinal(k)=1-sum(xfinal(1:k-1)); % Correct the Last Element
-            if XfX<XfX0 || exitflag~=-2 || exitflag~=-8
-                %             XfX=XfX0;
-                %xfinal=xfinal0;
-                %break;
-                XfX0=XfX;
-                xfinal0=xfinal;
-            end
-            % simulating for the next starting point
-            [x,~,A,r]=Simul(xfinal,nn);
-            % Augment initail Sample
-            x=[x,xSam]; %#ok<AGROW>
-            A=[A,ASam]; %#ok<AGROW>
-            r=[r,rSam]; %#ok<AGROW>
-            % Check whether the xfinal is better than the sampl
-            XfX1=min(A(r>=Beq & isfinite(A)));%% Notice: it must change to r>Beq ---- r>Beq-Stp & r<Beq+Stp
-            if isempty(XfX1)
-                break;
-            elseif XfX<=XfX1
-                break;
-            end
-            
-            [~,I]=find(A==XfX1);
-            
-            x0=x(:,I(1));
-        end
-        [~,ALPMA(l),RtA(l)]=f(xfinal0);
-        WeIA(l,:)=xfinal0.';
-        home;
-        disp([num2str(100*l/(L+1)) ' Percent is completed.']);
-    end
-    WeIA(Rt<-10^9,:)=[];
-    ALPMA(Rt<-10^9)=[];
-    RtA(Rt<-10^9)=[];
-    
+    if L>0
+    [WeIA,ALPMA,RtA]=ExtraPoint(OutX.',OutR.',xSam,ASam,rSam,nn);
+
     WeI=[WeI;WeIA];
     ALPM=[ALPM;ALPMA];
     Rt=[Rt;RtA];
+    end
 end
 
 
@@ -695,3 +631,74 @@ end
 disp('**************%*********%********* efficieny Curve is completed. ****%********%**********');
 end
 
+function [Wx,A,R]=ExtraPoint(x,r,xSam,ASam,rSam,nn)
+
+rSam0=r;
+L=length(rSam0);
+k=size(x,1);
+%A=OutA.';
+x00=[repmat(0.5,k,1),x];
+
+R=nan(L,1);
+A=R;
+Wx=nan(L,k);
+
+lb=[zeros(k-1,1);0];
+ub=[ones(k-1,1);0];
+
+% Optimization
+% we use global search instead of local ones
+ options = optimoptions(@fmincon,'Algorithm','sqp','ConstraintTolerance',10^-4); % this interior-point algorithm result was so good in the case of two asset model
+% (Other available algorithms: 'active-set', 'sqp', 'trust-region-reflective', 'interior-point')
+% First satring values
+
+XfX0=-inf;
+for l=1:L
+    Beq= rSam0(l);
+    x0=x00(:,l);
+    xfinal0=x0;%xfinal00(:,i);
+    for j=1:3
+        problem = createOptimProblem('fmincon','objective',...
+            @fEFO,'x0',x0,'lb',lb,'ub',ub,'options',options,'nonlcon',@fEFC);%,'ConstraintTolerance',10^-4);
+        % x0 is the stating point, lb the lower bound and up the upper bound in this case nothing has to be changed by user
+        % the lastinput is the shadow price or lagrange multiplier
+        gs = GlobalSearch('NumStageOnePoints',1000,'NumTrialPoints',4000);
+        disp(['Solving itration #' num2str(j)]);
+        % xfinal is the optimum weght for asset one
+        % XfX is the Valu of objective function
+        [xfinal, XfX,exitflag] = run(gs,problem);
+        xfinal(k)=1-sum(xfinal(1:k-1)); % Correct the Last Element
+        if XfX<XfX0 || exitflag~=-2 || exitflag~=-8
+            %             XfX=XfX0;
+            %xfinal=xfinal0;
+            %break;
+            XfX0=XfX;
+            xfinal0=xfinal;
+        end
+        % simulating for the next starting point
+        [x,~,A,r]=Simul(xfinal,nn);
+        % Augment initail Sample
+        x=[x,xSam]; %#ok<AGROW>
+        A=[A,ASam]; %#ok<AGROW>
+        r=[r,rSam]; %#ok<AGROW>
+        % Check whether the xfinal is better than the sampl
+        XfX1=min(A(r>=Beq & isfinite(A)));%% Notice: it must change to r>Beq ---- r>Beq-Stp & r<Beq+Stp
+        if isempty(XfX1)
+            break;
+        elseif XfX<=XfX1
+            break;
+        end
+        
+        [~,I]=find(A==XfX1);
+        
+        x0=x(:,I(1));
+    end
+    [~,A(l),R(l)]=f(xfinal0);
+    Wx(l,:)=xfinal0.';
+    home;
+    disp([num2str(100*l/(L+1)) ' Percent is completed.']);
+end
+Wx(Rt<-10^9,:)=[];
+A(Rt<-10^9)=[];
+R(Rt<-10^9)=[];
+end
