@@ -4,8 +4,8 @@ tic;
 global r1 alpha b c a beta Tau
 % Inputs
 % alpha the coef of LPM
-% a the power of LPM 
-% beta the coef of UMP 
+% a the power of LPM
+% beta the coef of UMP
 % b the coef of UMP
 % c the power of UMP
 
@@ -31,7 +31,7 @@ for s=1:S
     beta=Inp.beta(s);
     Tau=Inp.Tau(s);
     CoverOut=Inp.CoverOut;
-
+    
     nn=Inp.SampleSize(s);
     Resolution=Inp.Resolution(s);
     if ~(isfinite(a) && isfinite(b) &&isfinite(c) && isfinite(alpha) && isfinite(beta))
@@ -44,9 +44,9 @@ for s=1:S
         SenarioName=['Sen' num2str(s)];
     end
     if isnan(Resolution)
-        Resolution=nn;
+        Resolution=10;
     end
-     if isnan(CoverOut)
+    if isnan(CoverOut)
         CoverOut=0;
     end
     % find a reliable Sample
@@ -60,7 +60,7 @@ for s=1:S
     
     
     PM=MPM();
-   % plot Grapgh
+    % plot Grapgh
     if exist('Rt','var')
         Expt(x,A,r,SenarioName,PM,Rt,ALPM,xFinal);% Export Simulation data to excell file
         Grph(JustSort,x,A,r,SenarioName,PM,Rt,ALPM,xFinal);% plot Graph
@@ -176,7 +176,7 @@ saveas(gcf,['out\' SenarioName '\EC.bmp'])
 end
 %$$$$$$$$$$$$$$$$$$$$$$$###### Post Modern portfo Managment
 function [out]=MPM
-% Define portfo 
+% Define portfo
 global r1
 p0 = Portfolio('assetmean', mean(r1,1).', 'assetcovar', r1.'*r1, 'lowerbound', 0, 'lowerbudget', 1, 'upperbudget', 1);
 [rsk0,ret0]=p0.plotFrontier;
@@ -219,7 +219,7 @@ r=r1*w1;
 
 % Expected return
 if isfinite(Tau)
-   rB=Tau; 
+    rB=Tau;
 else
     rB=mean(r);
 end
@@ -427,8 +427,8 @@ function [OutX,OutA,OutR]=Outer(Rt,ALPM,xSam,ASam,rSam)
 yv=Rt;
 xv=ALPM;
 %Completed the curve
-yv(end+1)=-inf;
-xv(end+1)=inf;
+yv(end+1)=0;
+xv(end+1)=0;
 yv(end+1)=inf;
 xv(end+1)=inf;
 % Sort data
@@ -504,7 +504,7 @@ ub=[ones(k-1,1);0];
 % Optimization
 % we use global search instead of local ones
 options = optimoptions(@fmincon,'Algorithm','sqp','ConstraintTolerance',10^-4); % this interior-point algorithm result was so good in the case of two asset model
-% (Other available algorithms: 'active-set', 'sqp', 'trust-region-reflective', 'interior-point')'UseParallel', true, 
+% (Other available algorithms: 'active-set', 'sqp', 'trust-region-reflective', 'interior-point')'UseParallel', true,
 % First satring values
 
 XfX0=-inf;
@@ -580,7 +580,7 @@ if CoverOlp==1
     
     % Optimization
     % we use global search instead of local ones
-   % options = optimoptions(@fmincon,'UseParallel', true, 'UseCompletePoll', true, 'UseVectorized', false,'Algorithm','sqp','ConstraintTolerance',10^-4); % this interior-point algorithm result was so good in the case of two asset model
+    % options = optimoptions(@fmincon,'UseParallel', true, 'UseCompletePoll', true, 'UseVectorized', false,'Algorithm','sqp','ConstraintTolerance',10^-4); % this interior-point algorithm result was so good in the case of two asset model
     % (Other available algorithms: 'active-set', 'sqp', 'trust-region-reflective', 'interior-point')
     % First satring values
     
@@ -615,7 +615,7 @@ if CoverOlp==1
             A=[A,ASam]; %#ok<AGROW>
             r=[r,rSam]; %#ok<AGROW>
             % Check whether the xfinal is better than the sampl
-            XfX1=min(A(r>Beq-Stp & r<Beq+Stp & isfinite(A)));
+            XfX1=min(A(r>Beq & isfinite(A)));%% Notice: it must change to r>Beq ---- r>Beq-Stp & r<Beq+Stp
             if isempty(XfX1)
                 break;
             elseif XfX<=XfX1
@@ -639,14 +639,35 @@ if CoverOlp==1
     ALPM=[ALPM;ALPMA];
     Rt=[Rt;RtA];
 end
-% refine data
-ALPM=ALPM(isfinite(Rt));
-WeI=WeI(isfinite(Rt),:);
-Rt=Rt(isfinite(Rt));
-[Rt,ia]=unique(Rt);
-ALPM=ALPM(ia);
-WeI=WeI(ia,:);
+
+
 %%
+% refine data
+[WeI,ALPM,Rt]=refinery(WeI,ALPM,Rt);
 home;
 disp('**************%*********%********* efficieny Curve is completed. ****%********%**********');
+end
+function [x,A,R]=refinery(x,A,R)
+%Notice: the unconvex point must be Removed
+A=A(isfinite(R));
+x=x(isfinite(R),:);
+R=R(isfinite(R));
+
+n=length(R);
+for i=1:n
+    if ~isempty(find(R([1:i-1,i+1:end])>=R(i) & A([1:i-1,i+1:end])<=A(i),1))
+        R(i)=nan;
+    end
+end
+
+[R,ia]=unique(R);
+A=A(ia);
+x=x(ia,:);
+
+A=A(isfinite(R));
+x=x(isfinite(R),:);
+R=R(isfinite(R));
+
+
+
 end
