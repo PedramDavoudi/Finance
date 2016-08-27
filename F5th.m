@@ -72,7 +72,7 @@ for s=1:S
 end
 toc
 end
-% Data Exporting
+%****************************************** Data Exporting
 function  Expt(x,A,r,SenarioName,PM,Rt,ALPM,xFinal)
 global alpha b beta a c Tau
 
@@ -102,7 +102,10 @@ if exist('Rt','var')
 end
 clear Fxl
 % Fxl=cell(k+1+6,2);
-
+if exist('PM','var')
+Fxl=table(PM.MV(:,1),PM.MV(:,2),PM.CV(:,1),PM.CV(:,2),PM.MAD(:,1),PM.MAD(:,2),'VariableNames',{'Mean_Var_Risk' 'Mean_Var_Return' 'CVaR_Risk' 'CVaR_Return' 'Absolute_Deviation_Risk' 'Absolute_Deviation_Return'});
+writetable(Fxl,['out\' SenarioName '\MPM.xlsx'])
+end
 %Fxl(1:k,1)=Capx.';
 %Fxl(1:k,2)=num2cell(xfinal);
 
@@ -114,7 +117,7 @@ Fxl.ParameterValue=[a;alpha;b;beta;c;Tau];
 writetable(Fxl,['out\' SenarioName '\table.txt'])
 
 end
-% Graph Creater
+%****************************************** Graph Creater
 function Grph(JustSort,x,A,r,SenarioName,PM,Rt,ALPM,xFinal)
 if ~exist('SenarioName','var')
     SenarioName='Sen';
@@ -125,10 +128,10 @@ for i=1:k
     figure();
     hold on
     [x0r,r0] =Xfine(x(i,:),r,1); % Just Sorted and not refined in any case
-    plot(x0r,r0,'c . ');
+    plot(x0r,r0,'b . ');
     if exist('Rt','var')
         [x0y,y0]=Xfine(xFinal(:,i),Rt,1);
-        plot(x0y,y0,'g');
+        plot(x0y,y0,'r O');
     end
     %plot(xfinal(i), XfX,'r O')
     title('Portfo Analyze');
@@ -142,9 +145,9 @@ for i=1:k
     hold on
     [x0A,A0]=Xfine(x(i,:),A,JustSort);
     plot(x0A,A0,'b . ');
-    if exist('Rt','var')
+    if exist('ALPM','var')
         [x1y,y1]=Xfine(xFinal(:,i),ALPM,1);
-        plot(x1y,y1,'g');
+        plot(x1y,y1,'r O');
     end
     %plot(xfinal(i), XfX,'r O')
     title('Portfo Analyze');
@@ -302,6 +305,7 @@ function [A]=fEFO(w1)
 
 end
 %********************************************** Constraint
+%{
 function [c,ceq]=fEFC0(w1)
 % c is inequlity less than zero
 % ceq is equality with zero
@@ -330,6 +334,7 @@ ceq=mean(r)-Beq;
 
 
 end
+%}
 function [c,ceq]=fEFC(w1)
 % c is inequlity less than zero
 % ceq is equality with zero
@@ -456,7 +461,37 @@ OutA=OutA(ia);
 OutX=OutX(ia,:);
 %%
 end
+% ************************************** Asure Convexity
+function [x,A,R]=refinery(x,A,R)
+%Notice: the unconvex point must be Removed
+A=A(isfinite(R));
+x=x(isfinite(R),:);
+R=R(isfinite(R));
 
+n=length(R);
+for i=1:n
+    if ~isempty(find(R([1:i-1,i+1:end])>=R(i) & A([1:i-1,i+1:end])<=A(i),1))
+        R(i)=nan;
+    end
+end
+
+[R,ia]=unique(R);
+A=A(ia);
+x=x(ia,:);
+
+A=A(isfinite(R));
+x=x(isfinite(R),:);
+R=R(isfinite(R));
+
+
+x=x(isfinite(A),:);
+R=R(isfinite(A));
+A=A(isfinite(A));
+
+A=A(any(isfinite(x),2));
+R=R(any(isfinite(x),2));
+x=x(any(isfinite(x),2),:);
+end
 %***********************************************  Efficiency Curve Biulder
 function [Rt,ALPM,WeI]=findEC(xSam,ASam,rSam,k,nn,Resolution,CoverOlp)
 disp('Optimization of Efficiency Curve is Started');
@@ -538,7 +573,7 @@ for l=1:L
         A=[A,ASam]; %#ok<AGROW>
         r=[r,rSam]; %#ok<AGROW>
         % Check whether the xfinal is better than the sampl
-        XfX1=min(A(r>Beq-Stp & r<Beq+Stp & isfinite(A)));
+        XfX1=min(A(r>=Beq & isfinite(A)));%% Notice: it must change to r>Beq ---- r>Beq-Stp & r<Beq+Stp
         if isempty(XfX1)
             break;
         elseif XfX<=XfX1
@@ -615,7 +650,7 @@ if CoverOlp==1
             A=[A,ASam]; %#ok<AGROW>
             r=[r,rSam]; %#ok<AGROW>
             % Check whether the xfinal is better than the sampl
-            XfX1=min(A(r>Beq & isfinite(A)));%% Notice: it must change to r>Beq ---- r>Beq-Stp & r<Beq+Stp
+            XfX1=min(A(r>=Beq & isfinite(A)));%% Notice: it must change to r>Beq ---- r>Beq-Stp & r<Beq+Stp
             if isempty(XfX1)
                 break;
             elseif XfX<=XfX1
@@ -644,30 +679,7 @@ end
 %%
 % refine data
 [WeI,ALPM,Rt]=refinery(WeI,ALPM,Rt);
-home;
+%home;
 disp('**************%*********%********* efficieny Curve is completed. ****%********%**********');
 end
-function [x,A,R]=refinery(x,A,R)
-%Notice: the unconvex point must be Removed
-A=A(isfinite(R));
-x=x(isfinite(R),:);
-R=R(isfinite(R));
 
-n=length(R);
-for i=1:n
-    if ~isempty(find(R([1:i-1,i+1:end])>=R(i) & A([1:i-1,i+1:end])<=A(i),1))
-        R(i)=nan;
-    end
-end
-
-[R,ia]=unique(R);
-A=A(ia);
-x=x(ia,:);
-
-A=A(isfinite(R));
-x=x(isfinite(R),:);
-R=R(isfinite(R));
-
-
-
-end
