@@ -379,6 +379,21 @@ end
 %***********************************************  Sample Biulder
 function [xfinal,XfX,x,y,A,r]=OpO(k,nn)
 % this function just replicate a good sample
+x=rand(k,nn);%MU,SIGMA,n
+x=x./repmat(sum(x,1),k,1);
+y=nan(1,nn);
+A=y;
+r=y;
+%[y(1),A(1),r(1)]=f(xfinal);% Add the final point to Sapmle collection
+%x=[xfinal,x];
+for i=1:nn
+    [y(i),A(i),r(i)]=f(x(:,i));
+end
+x(:,r<-10^9)=[];
+y(r<-10^9)=[];
+A(r<-10^9)=[];
+r(r<-10^9)=[];
+return
 % Optimization
 disp('Optimization of Objective Function To Build qualified Sample Started');
 % we use global search instead of local ones
@@ -444,18 +459,25 @@ function [OutX,OutA,OutR]=Outer(Rt,ALPM,xSam,ASam,rSam)
 % Define the x and y coordinates of polygon vertices to create a pentagon.
 yv=Rt;
 xv=ALPM;
-%Completed the curve
-yv(end+1)=0;
-xv(end+1)=0;
-yv(end+1)=inf;
-xv(end+1)=inf;
-% Sort data
-[yv,I]=sort(yv);
-xv=xv(I);
-
 % Define x and y coordinates of Simulation data
 yq=rSam;
 xq=ASam;
+
+%Completed the curve
+yv(end+1)=0;
+xv(end+1)=0;
+yv(end+1)=2*max(yq);
+xv(end+1)=2*max(xq);
+
+% Sort data
+[yv,I]=unique(yv);
+xv=xv(I);
+yv(end+1)=0;
+xv(end+1)=2*max(xq);
+yv(end+1)=0;
+xv(end+1)=0;
+
+
 
 %%
 % Determine whether each point lies inside or on the edge of the polygon
@@ -466,17 +488,19 @@ OutA=xq(~(in | on));
 OutR=yq(~(in | on));
 OutX=xSam(~(in | on),:);
 % refine data
-OutA=OutA(isfinite(OutR));
-OutX=OutX(isfinite(OutR),:);
-OutR=OutR(isfinite(OutR));
-[OutR,ia]=unique(OutR);
-OutA=OutA(ia);
-OutX=OutX(ia,:);
+[OutX,OutA,OutR]=refinery(OutX,OutA,OutR);
+% OutA=OutA(isfinite(OutR));
+% OutX=OutX(isfinite(OutR),:);
+% OutR=OutR(isfinite(OutR));
+% [OutR,ia]=unique(OutR);
+% OutA=OutA(ia);
+% OutX=OutX(ia,:);
 %%
 end
 % ************************************** Asure Convexity
 function [x,A,R]=refinery(x,A,R)
 %Notice: the unconvex point must be Removed
+% each row shows a perid of time A , R is vectoral column
 A=A(isfinite(R));
 x=x(isfinite(R),:);
 R=R(isfinite(R));
@@ -515,6 +539,9 @@ end
 if nargin<6
     Resolution=nan;
 end
+[xSam,ASam,rSam]=refinery(xSam.',ASam.',rSam.');
+xSam
+,ASam,rSam
 xSam(:,~isfinite(rSam))=[];
 ASam(:,~isfinite(rSam))=[];
 rSam(:,~isfinite(rSam))=[];
@@ -632,7 +659,6 @@ disp('**************%*********%********* efficieny Curve is completed. ****%****
 end
 
 function [Wx,A,R]=ExtraPoint(x,r,xSam,ASam,rSam,nn)
-
 rSam0=r;
 L=length(rSam0);
 k=size(x,1);
