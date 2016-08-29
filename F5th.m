@@ -11,7 +11,7 @@ global r1 alpha b c a beta Tau
 
 %
 % Resolution=1;
-JustSimulation=0;
+%JustSimulation=0;
 JustSort=1;
 Inp=dataset('xlsfile','Input\Senarios');
 S=size(Inp,1);
@@ -30,6 +30,7 @@ for s=1:S
     alpha=Inp.alpha(s);
     beta=Inp.beta(s);
     Tau=Inp.Tau(s);
+    JustSimulation=Inp.JustSimulation(s);
     CoverOut=Inp.CoverOut;
     
     nn=Inp.SampleSize(s);
@@ -56,19 +57,21 @@ for s=1:S
     % Create Efficiency Curve
     if JustSimulation==0
         [Rt,ALPM,xFinal]=findEC(x,A,r,k,nn,Resolution,CoverOut);
+        PM=MPM(length(Rt));
+    else
+        PM=MPM(Resolution);
     end
     
     
-    PM=MPM(Resolution);
     % plot Grapgh
     if exist('Rt','var')
         Expt(x,A,r,SenarioName,PM,Rt,ALPM,xFinal);% Export Simulation data to excell file
         Grph(JustSort,x,A,r,SenarioName,PM,Rt,ALPM,xFinal);% plot Graph
     else
-        Expt(x,A,r,SenarioName);% Export Simulation data to excell file
-        Grph(JustSort,x,A,r,SenarioName);% plot Graph
+        Expt(x,A,r,SenarioName,PM);% Export Simulation data to excell file
+        Grph(JustSort,x,A,r,SenarioName,PM);% plot Graph
     end
-    disp(['************ Senrio: ' SenarioName 'Was Completed. *****************']);
+    disp(['************ Senrio: ' SenarioName ' Was Completed. *****************']);
 end
 toc
 end
@@ -103,7 +106,7 @@ if exist('Rt','var')
 end
 % Fxl=cell(k+1+6,2);
 if exist('PM','var')
-    Fxl0=dataset(PM.MV(:,1),PM.MV(:,2),PM.CV(:,1),PM.CV(:,2),PM.MAD(:,1),PM.MAD(:,2),'VarNames',{'Mean_Var_Risk' 'Mean_Var_Return' 'CVaR_Risk' 'CVaR_Return' 'Absolute_Deviation_Risk' 'Absolute_Deviation_Return'});
+    Fxl0=dataset(PM.MV.A,PM.MV.R,PM.CV.A,PM.CV.R,PM.MAD.A,PM.MAD.R,'VarNames',{'Mean_Var_Risk' 'Mean_Var_Return' 'CVaR_Risk' 'CVaR_Return' 'Absolute_Deviation_Risk' 'Absolute_Deviation_Return'});
     export(Fxl0,'xlsfile',['out\' SenarioName '\EFM.xlsx'])
 end
 
@@ -118,27 +121,39 @@ writetable(Fxl,['out\' SenarioName '\table.txt'])
 end
 %****************************************** Graph Creater
 function Grph(JustSort,x,A,r,SenarioName,PM,Rt,ALPM,xFinal)
+global r1
 if ~exist('SenarioName','var')
     SenarioName='Sen';
 end
-x=[x,xFinal.'];
-A=[A,ALPM.'];
-r=[r,Rt.'];
+if exist('Rt','var')
+    x=[x,xFinal.'];
+    A=[A,ALPM.'];
+    r=[r,Rt.'];
+end
 k=size(x,1);
 % plot Graph
+for i=1:k
+    ksdensity(r1(:,k));
+    title(['Kernel of Asset #' num2str(i)]);
+    saveas(gcf,['out\' SenarioName '\Kr' num2str(i) '.bmp'])
+    close gcf
+end
 for i=1:k
     figure();
     hold on
     [x0r,r0] =Xfine(x(i,:),r,1); % Just Sorted and not refined in any case
     plot(x0r,r0,'b . ');
+    legend({'Simul'});
     if exist('Rt','var')
         [x0y,y0]=Xfine(xFinal(:,i),Rt,1);
         plot(x0y,y0,'r O');
+        legend({'Simul','Optimum Point in Return'});%,})
     end
     %plot(xfinal(i), XfX,'r O')
     title('Portfo Analyze');
+    ylabel('Return');
     xlabel(['Weight of Asset #' num2str(i)]);
-    legend({'Return','Optimum Point in Return'})%,})
+    
     hold off
     saveas(gcf,['out\' SenarioName '\wR' num2str(i) '.bmp'])
     close gcf
@@ -147,14 +162,16 @@ for i=1:k
     hold on
     [x0A,A0]=Xfine(x(i,:),A,JustSort);
     plot(x0A,A0,'b . ');
+    legend({'Simul'});
     if exist('ALPM','var')
         [x1y,y1]=Xfine(xFinal(:,i),ALPM,1);
         plot(x1y,y1,'r O');
+        legend({'Simul','Optimum Point in ALPM'});
     end
     %plot(xfinal(i), XfX,'r O')
     title('Portfo Analyze');
+    ylabel('ALPM')
     xlabel(['Weight of Asset #' num2str(i)]);
-    legend({'ALPM','Optimum Point in ALPM'})%,})
     hold off
     saveas(gcf,['out\' SenarioName '\wA' num2str(i) '.bmp'])
     close gcf
@@ -165,19 +182,22 @@ end
 figure();
 
 %[~,A0,r0]=f(xfinal);
-plot(A,r,'b . ');%,A0, r0,'r O');
+plot(A,r,'y . ');%,A0, r0,'r O');Simul
+legend({'s'});
 hold on
 if exist('Rt','var')
     plot(ALPM,Rt,'g');
+    legend([get(legend,'string'),{'ALPM'}]);
 end
 if exist('PM','var')
-    plot(PM.MV(:,1),PM.MV(:,2),'b',PM.CV(:,1),PM.CV(:,2),'r',PM.MAD(:,1),PM.MAD(:,2),'d');
+    plot(PM.MV.A,PM.MV.R,'b')%,PM.CV.A,PM.CV.A,'r',PM.MAD.A,PM.MAD.R,'d');
+    legend([get(legend,'string'),{'Mean-Variance'}]);%,'CVaR','MAD'})
 end
 
 title('Efficient Frontier');
 ylabel('Portfo Expected Return');
 xlabel('Portfo ALPM');
-legend({'Simul','ALPM','Mean-Variance','CVaR','MAD'})
+
 hold off
 saveas(gcf,['out\' SenarioName '\EC.bmp'])
 %close gcf
@@ -185,22 +205,48 @@ end
 %$$$$$$$$$$$$$$$$$$$$$$$###### Post Modern portfo Managment
 function [out]=MPM(NumPoint)
 % Define portfo
-global r1
-p0 = Portfolio('assetmean', mean(r1,1).', 'assetcovar', r1.'*r1, 'lb', 0.25, 'ub', 0.55);
-[rsk0,ret0]=p0.plotFrontier(NumPoint);
-out.MV=[rsk0,ret0];
-p1 = PortfolioCVaR;
-p1 = simulateNormalScenariosByData(p1, r1, 2000);
-p1 = PortfolioCVaR(p1,'lb', 0.25,'ub',0.55,  'ProbabilityLevel', 0.95); %'Scenarios', r1, 'Budget', 1,
-[rsk1,ret1]=p1.plotFrontier(NumPoint);
-out.CV=[rsk1,ret1];
-p2 = PortfolioMAD;
-p2 = simulateNormalScenariosByData(p2, r1, 2000);
-p2 = PortfolioMAD(p2,'lb', 0.25,'ub', 0.55);% 'Scenarios', r1,
 
-[rsk2,ret2]=plotFrontier(p2,NumPoint);
-out.MAD=[rsk2,ret2];
+global r1
+
+p = Portfolio('assetmean', mean(r1,1).', 'assetcovar', r1.'*r1);
+p = setDefaultConstraints(p);
+w = estimateFrontier(p,NumPoint);
+out.MV.W=w.';
+out.MV.R=nan(NumPoint,1);
+out.MV.A=nan(NumPoint,1);
+for i=1:NumPoint
+    [~,out.MV.A(i),out.MV.R(i)]=f(w(:,i));
+end
+% [rsk0,ret0]=p0.plotFrontier(NumPoint);
+% out.MV=[rsk0,ret0];
+p = PortfolioCVaR;
+p = simulateNormalScenariosByData(p, r1, 2000);
+p = setDefaultConstraints(p);
+p = PortfolioCVaR(p, 'ProbabilityLevel', 0.95); %'Scenarios', r1, 'Budget', 1,
+% [rsk1,ret1]=p1.plotFrontier(NumPoint);
+% out.CV=[rsk1,ret1];
+w = estimateFrontier(p,NumPoint);
+out.CV.W=w.';
+out.CV.R=nan(NumPoint,1);
+out.CV.A=nan(NumPoint,1);
+for i=1:NumPoint
+    [~,out.CV.A(i),out.CV.R(i)]=f(w(:,i));
+end
+p = PortfolioMAD;
+p = simulateNormalScenariosByData(p, r1, 2000);
+p = setDefaultConstraints(p);
+%p2 = PortfolioMAD(p2,'lb', 0.25,'ub', 0.55);% 'Scenarios', r1,
+w = estimateFrontier(p,NumPoint);
+out.MAD.W=w.';
+out.MAD.R=nan(NumPoint,1);
+out.MAD.A=nan(NumPoint,1);
+for i=1:NumPoint
+    [~,out.MAD.A(i),out.MAD.R(i)]=f(w(:,i));
+end
+% [rsk2,ret2]=plotFrontier(p2,NumPoint);
+% out.MAD=[rsk2,ret2];
 close all
+%}
 end
 %####################### Sampler Objective Function
 function [y,A,rB]=f(w1)
@@ -219,6 +265,7 @@ w1(k+1:end)=[];
 
 % build final Weight
 w1(k,1)=1-sum(w1(1:k-1));
+
 % check
 if any(w1>1) || any(w1<0)
     A=10^10;
@@ -241,8 +288,8 @@ rBar=repmat(rB,n,1);
 LPM=max(rBar-r,0);
 UMP=max(r-rBar,0);
 pminus=sum(LPM>0)/n;
-Pplus=1-pminus;
-A= alpha*pminus*sum(LPM.^a)-b*Pplus*beta*sum(UMP.^c);
+Pplus=sum(UMP>0)/n;
+A= alpha*pminus*sum(LPM.^a)+b*Pplus*beta*sum(UMP.^c);
 
 rB=mean(r);
 %ObjectiveFunction
@@ -380,10 +427,9 @@ end
 function [x,A,r]=OpO(k,nn)
 % this function just replicate a good sample
 x = randfixedsum(k,nn,1,0,1);
-
-y=nan(1,nn);
-A=y;
-r=y;
+A=nan(1,nn);
+%y=A;
+r=A;
 %[y(1),A(1),r(1)]=f(xfinal);% Add the final point to Sapmle collection
 %x=[xfinal,x];
 for i=1:nn
@@ -393,7 +439,9 @@ x(:,r<-10^9)=[];
 %y(r<-10^9)=[];
 A(r<-10^9)=[];
 r(r<-10^9)=[];
-return
+disp('************************ Sampling Done *************************');
+
+%{
 % Optimization
 disp('Optimization of Objective Function To Build qualified Sample Started');
 % we use global search instead of local ones
@@ -450,7 +498,8 @@ r(r<-10^9)=[];
 %     disp(['Optimum Asset #' num2str(i) ' Weight:' ,num2str(100*round(xfinal(i),3))]);
 % end
 % disp(['Optimum Value of Objective Function:' ,num2str(round(XfX,3))]);
-disp('************************ Sampling Done *************************');
+%}
+
 end
 function [x,v] = randfixedsum(n,m,s,a,b)
 
@@ -495,9 +544,9 @@ function [x,v] = randfixedsum(n,m,s,a,b)
 
 % Check the arguments.
 if (m~=round(m))||(n~=round(n))||(m<0)||(n<1)
- error('n must be a whole number and m a non-negative integer.')
+    error('n must be a whole number and m a non-negative integer.')
 elseif (s<n*a)||(s>n*b)||(a>=b)
- error('Inequalities n*a <= s <= n*b and a < b must hold.')
+    error('Inequalities n*a <= s <= n*b and a < b must hold.')
 end
 
 % Rescale to a unit cube: 0 <= x(i) <= 1
@@ -513,12 +562,12 @@ w = zeros(n,n+1); w(1,2) = realmax; % Scale for full 'double' range
 t = zeros(n-1,n);
 tiny = 2^(-1074); % The smallest positive matlab 'double' no.
 for i = 2:n
- tmp1 = w(i-1,2:i+1).*s1(1:i)/i;
- tmp2 = w(i-1,1:i).*s2(n-i+1:n)/i;
- w(i,2:i+1) = tmp1 + tmp2;
- tmp3 = w(i,2:i+1) + tiny; % In case tmp1 & tmp2 are both 0,
- tmp4 = (s2(n-i+1:n) > s1(1:i)); % then t is 0 on left & 1 on right
- t(i-1,1:i) = (tmp2./tmp3).*tmp4 + (1-tmp1./tmp3).*(~tmp4);
+    tmp1 = w(i-1,2:i+1).*s1(1:i)/i;
+    tmp2 = w(i-1,1:i).*s2(n-i+1:n)/i;
+    w(i,2:i+1) = tmp1 + tmp2;
+    tmp3 = w(i,2:i+1) + tiny; % In case tmp1 & tmp2 are both 0,
+    tmp4 = (s2(n-i+1:n) > s1(1:i)); % then t is 0 on left & 1 on right
+    t(i-1,1:i) = (tmp2./tmp3).*tmp4 + (1-tmp1./tmp3).*(~tmp4);
 end
 
 % Derive the polytope volume v from the appropriate
@@ -534,12 +583,12 @@ s = repmat(s,1,m);
 j = repmat(k+1,1,m); % For indexing in the t table
 sm = zeros(1,m); pr = ones(1,m); % Start with sum zero & product 1
 for i = n-1:-1:1  % Work backwards in the t table
- e = (rt(n-i,:)<=t(i,j)); % Use rt to choose a transition
- sx = rs(n-i,:).^(1/i); % Use rs to compute next simplex coord.
- sm = sm + (1-sx).*pr.*s/(i+1); % Update sum
- pr = sx.*pr; % Update product
- x(n-i,:) = sm + pr.*e; % Calculate x using simplex coords.
- s = s - e; j = j - e; % Transition adjustment
+    e = (rt(n-i,:)<=t(i,j)); % Use rt to choose a transition
+    sx = rs(n-i,:).^(1/i); % Use rs to compute next simplex coord.
+    sm = sm + (1-sx).*pr.*s/(i+1); % Update sum
+    pr = sx.*pr; % Update product
+    x(n-i,:) = sm + pr.*e; % Calculate x using simplex coords.
+    s = s - e; j = j - e; % Transition adjustment
 end
 x(n,:) = sm + pr.*s; % Compute the last x
 
@@ -629,7 +678,7 @@ end
 %***********************************************  Efficiency Curve Biulder
 function [Rt,ALPM,WeI]=findEC(xSam,ASam,rSam,k,nn,Resolution,CoverOlp)
 disp('Optimization of Efficiency Curve is Started');
-global Beq
+% global Beq
 if nargin<7
     CoverOlp=0;
 end
@@ -637,113 +686,68 @@ if nargin<6
     Resolution=nan;
 end
 [xSam,ASam,rSam]=refinery(xSam.',ASam.',rSam.');
-xSam
-,ASam,rSam
-xSam(:,~isfinite(rSam))=[];
-ASam(:,~isfinite(rSam))=[];
-rSam(:,~isfinite(rSam))=[];
-[rSam0,ia]=unique(rSam);
+xSam=xSam.'; ASam=ASam.'; rSam=rSam.';
+% xSam(:,~isfinite(rSam))=[];
+% ASam(:,~isfinite(rSam))=[];
+% rSam(:,~isfinite(rSam))=[];
+rSam0=rSam;
 L=length(rSam0);
 if L<1
     warning('Bad Parametrization. No Efficeincy frontier Created.');
     return
 end
-if isnan(Resolution) || Resolution>L-1
-    Resolution=L;
-end
-if Resolution>1
-    Stp=fix(L/(Resolution-1));
-else
-    Stp= 1;
-end
-%%
-rSam0=[rSam0(1:Stp:L-1),rSam0(L)];
-ia=[ia(1:Stp:L-1).',ia(L)];
+% if isnan(Resolution) || Resolution>L-1
+%     Resolution=L;
+% end
+% if Resolution>1
+%     Stp=fix(L/(Resolution-1));
+% else
+%     Stp= 1;
+% end
+%% assymetric poinr distribution
+r = unique(fix(betarnd(1.2,12,1,Resolution)*L));
+r=unique([r,1,L]);
+
+r(r<1 | r>L)=[];
+% rSam0=[rSam0(1:Stp:L-1),rSam0(L)];
+% ia=[ia(1:Stp:L-1).',ia(L)];
+rSam0=rSam0(r);
 L=length(rSam0);
 x00=zeros(k,L);
-Rt=nan(L,1);
-ALPM=Rt;
-WeI=nan(L,k);
+
+% Rt=nan(L,1);
+% ALPM=Rt;
+% WeI=nan(L,k);
 
 for l=1:L
-    A=min(ASam(ia(l)));
+    A=min(ASam(r(l)));
     [~,I]=find(ASam==A);
     x00(1:k-1,l)=xSam(1:k-1,I(1));
 end
 lb=[zeros(k-1,1);0];
 ub=[ones(k-1,1);0];
 
-% Optimization
-% we use global search instead of local ones
-options = optimoptions(@fmincon,'Algorithm','sqp','ConstraintTolerance',10^-4); % this interior-point algorithm result was so good in the case of two asset model
-% (Other available algorithms: 'active-set', 'sqp', 'trust-region-reflective', 'interior-point')'UseParallel', true,
-% First satring values
+[WeI,ALPM,Rt]=Optimiz(rSam0,xSam,ASam,rSam,x00,lb,ub,k,nn);
 
-XfX0=-inf;
-%Stp=10^-4;
-for l=1:L
-    Beq= rSam0(l);
-    x0=x00(:,l);
-    xfinal0=x0;%xfinal00(:,i);
-    for j=1:3
-        problem = createOptimProblem('fmincon','objective',...
-            @fEFO,'x0',x0,'lb',lb,'ub',ub,'options',options,'nonlcon',@fEFC);%,'ConstraintTolerance',10^-4);
-        % x0 is the stating point, lb the lower bound and up the upper bound in this case nothing has to be changed by user
-        % the lastinput is the shadow price or lagrange multiplier
-        gs = GlobalSearch('NumStageOnePoints',1000,'NumTrialPoints',4000);
-        disp(['Solving itration #' num2str(j)]);
-        % xfinal is the optimum weght for asset one
-        % XfX is the Valu of objective function
-        [xfinal, XfX,exitflag] = run(gs,problem);
-        xfinal(k)=1-sum(xfinal(1:k-1)); % Correct the Last Element
-        if XfX<XfX0 || exitflag~=-2 || exitflag~=-8
-            %             XfX=XfX0;
-            %xfinal=xfinal0;
-            %break;
-            XfX0=XfX;
-            xfinal0=xfinal;
-        end
-        % simulating for the next starting point
-        [x,~,A,r]=Simul(xfinal,nn);
-        % Augment initail Sample
-        x=[x,xSam]; %#ok<AGROW>
-        A=[A,ASam]; %#ok<AGROW>
-        r=[r,rSam]; %#ok<AGROW>
-        % Check whether the xfinal is better than the sampl
-        XfX1=min(A(r>=Beq & isfinite(A)));%% Notice: it must change to r>Beq ---- r>Beq-Stp & r<Beq+Stp
-        if isempty(XfX1)
-            break;
-        elseif XfX<=XfX1
-            break;
-        end
-        
-        [~,I]=find(A==XfX1);
-        
-        x0=x(:,I(1));
-    end
-    [~,ALPM(l),Rt(l)]=f(xfinal0);
-    WeI(l,:)=xfinal0.';
-    home;
-    disp([num2str(100*l/(L+1)) ' Percent is completed.']);
-end
-WeI(Rt<-10^9,:)=[];
-ALPM(Rt<-10^9)=[];
-Rt(Rt<-10^9)=[];
 %%
 %------------------ Find Oulier point
 if CoverOlp==1
     beep
     home;
     disp('/\/\/\/\/\/\/\/\/\/\/\/\/\ Covering Oulier Point /\/\/\/\/\/\/\/\/\/\/\');
-    [OutX,~,OutR]=Outer(Rt,ALPM,xSam.',ASam.',rSam.');
+    [~,~,OutR]=Outer(Rt,ALPM,xSam.',ASam.',rSam.');
     L=length(OutR);
-    disp(['/*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\ (' num2str(L) ') outlaw points found. /*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\']);
+    disp(['/*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\ (' num2str(L) ') outlaw points found from ' length(rSam) ' Sample . /*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\']);
     if L>0
-    [WeIA,ALPMA,RtA]=ExtraPoint(OutX.',OutR.',xSam,ASam,rSam,nn);
-
-    WeI=[WeI;WeIA];
-    ALPM=[ALPM;ALPMA];
-    Rt=[Rt;RtA];
+        x00=repmat(0.5,k,L);
+        lb=[zeros(k-1,1);0];
+        ub=[ones(k-1,1);0];
+        
+        [WeIA,ALPMA,RtA]=Optimiz(OutR.',xSam,ASam,rSam,x00,lb,ub,k,nn);
+        
+        WeI=[WeI;WeIA];
+        ALPM=[ALPM;ALPMA];
+        Rt=[Rt;RtA];
     end
 end
 
@@ -755,23 +759,19 @@ end
 disp('**************%*********%********* efficieny Curve is completed. ****%********%**********');
 end
 
-function [Wx,A,R]=ExtraPoint(x,r,xSam,ASam,rSam,nn)
-rSam0=r;
+function [Wx,A,R]=Optimiz(rSam0,xSam,ASam,rSam,x00,lb,ub,k,nn)
+global Beq
+% rSam0=r;
 L=length(rSam0);
-k=size(x,1);
-%A=OutA.';
-x00=[repmat(0.5,k,1),x];
+% k=size(x,1);
 
 R=nan(L,1);
 A=R;
 Wx=nan(L,k);
 
-lb=[zeros(k-1,1);0];
-ub=[ones(k-1,1);0];
-
 % Optimization
 % we use global search instead of local ones
- options = optimoptions(@fmincon,'Algorithm','sqp','ConstraintTolerance',10^-4); % this interior-point algorithm result was so good in the case of two asset model
+options = optimoptions(@fmincon,'Algorithm','sqp','ConstraintTolerance',10^-4); % this interior-point algorithm result was so good in the case of two asset model
 % (Other available algorithms: 'active-set', 'sqp', 'trust-region-reflective', 'interior-point')
 % First satring values
 
@@ -799,20 +799,20 @@ for l=1:L
             xfinal0=xfinal;
         end
         % simulating for the next starting point
-        [x,~,A,r]=Simul(xfinal,nn);
+        [x,~,A0,r]=Simul(xfinal,nn);
         % Augment initail Sample
         x=[x,xSam]; %#ok<AGROW>
-        A=[A,ASam]; %#ok<AGROW>
+        A0=[A0,ASam]; %#ok<AGROW>
         r=[r,rSam]; %#ok<AGROW>
         % Check whether the xfinal is better than the sampl
-        XfX1=min(A(r>=Beq & isfinite(A)));%% Notice: it must change to r>Beq ---- r>Beq-Stp & r<Beq+Stp
+        XfX1=min(A0(r>=Beq & isfinite(A0)));%% Notice: it must change to r>Beq ---- r>Beq-Stp & r<Beq+Stp
         if isempty(XfX1)
             break;
         elseif XfX<=XfX1
             break;
         end
         
-        [~,I]=find(A==XfX1);
+        [~,I]=find(A0==XfX1);
         
         x0=x(:,I(1));
     end
@@ -821,7 +821,7 @@ for l=1:L
     home;
     disp([num2str(100*l/(L+1)) ' Percent is completed.']);
 end
-Wx(Rt<-10^9,:)=[];
-A(Rt<-10^9)=[];
-R(Rt<-10^9)=[];
+Wx(R<-10^9,:)=[];
+A(R<-10^9)=[];
+R(R<-10^9)=[];
 end
