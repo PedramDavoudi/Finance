@@ -11,7 +11,7 @@ global r1 alpha b c a beta Tau
 
 %
 % Resolution=1;
-JustSimulation=0;
+%JustSimulation=0;
 JustSort=1;
 Inp=dataset('xlsfile','Input\Senarios');
 S=size(Inp,1);
@@ -30,6 +30,7 @@ for s=1:S
     alpha=Inp.alpha(s);
     beta=Inp.beta(s);
     Tau=Inp.Tau(s);
+    JustSimulation=Inp.JustSimulation(s);
     CoverOut=Inp.CoverOut;
     
     nn=Inp.SampleSize(s);
@@ -56,17 +57,19 @@ for s=1:S
     % Create Efficiency Curve
     if JustSimulation==0
         [Rt,ALPM,xFinal]=findEC(x,A,r,k,nn,Resolution,CoverOut);
+        PM=MPM(length(Rt));
+    else
+        PM=MPM(Resolution);
     end
     
     
-    PM=MPM(length(Rt));
-    % plot Grapgh
+     % plot Grapgh
     if exist('Rt','var')
         Expt(x,A,r,SenarioName,PM,Rt,ALPM,xFinal);% Export Simulation data to excell file
         Grph(JustSort,x,A,r,SenarioName,PM,Rt,ALPM,xFinal);% plot Graph
     else
-        Expt(x,A,r,SenarioName);% Export Simulation data to excell file
-        Grph(JustSort,x,A,r,SenarioName);% plot Graph
+        Expt(x,A,r,SenarioName,PM);% Export Simulation data to excell file
+        Grph(JustSort,x,A,r,SenarioName,PM);% plot Graph
     end
     disp(['************ Senrio: ' SenarioName 'Was Completed. *****************']);
 end
@@ -103,7 +106,7 @@ if exist('Rt','var')
 end
 % Fxl=cell(k+1+6,2);
 if exist('PM','var')
-    Fxl0=dataset(PM.MV(:,1),PM.MV(:,2),PM.CV(:,1),PM.CV(:,2),PM.MAD(:,1),PM.MAD(:,2),'VarNames',{'Mean_Var_Risk' 'Mean_Var_Return' 'CVaR_Risk' 'CVaR_Return' 'Absolute_Deviation_Risk' 'Absolute_Deviation_Return'});
+    Fxl0=dataset(PM.MV.A,PM.MV.R,PM.CV.A,PM.CV.R,PM.MAD.A,PM.MAD.R,'VarNames',{'Mean_Var_Risk' 'Mean_Var_Return' 'CVaR_Risk' 'CVaR_Return' 'Absolute_Deviation_Risk' 'Absolute_Deviation_Return'});
     export(Fxl0,'xlsfile',['out\' SenarioName '\EFM.xlsx'])
 end
 
@@ -118,27 +121,36 @@ writetable(Fxl,['out\' SenarioName '\table.txt'])
 end
 %****************************************** Graph Creater
 function Grph(JustSort,x,A,r,SenarioName,PM,Rt,ALPM,xFinal)
+global r1
 if ~exist('SenarioName','var')
     SenarioName='Sen';
 end
+if exist('Rt','var')
 x=[x,xFinal.'];
 A=[A,ALPM.'];
 r=[r,Rt.'];
+end
 k=size(x,1);
 % plot Graph
+for i=1:k
+   kernel( 
+end
 for i=1:k
     figure();
     hold on
     [x0r,r0] =Xfine(x(i,:),r,1); % Just Sorted and not refined in any case
     plot(x0r,r0,'b . ');
+    legend({'Simul'});
     if exist('Rt','var')
         [x0y,y0]=Xfine(xFinal(:,i),Rt,1);
         plot(x0y,y0,'r O');
+        legend({'Simul','Optimum Point in Return'});%,})
     end
     %plot(xfinal(i), XfX,'r O')
     title('Portfo Analyze');
+    ylabel('Return');
     xlabel(['Weight of Asset #' num2str(i)]);
-    legend({'Return','Optimum Point in Return'})%,})
+    
     hold off
     saveas(gcf,['out\' SenarioName '\wR' num2str(i) '.bmp'])
     close gcf
@@ -147,14 +159,16 @@ for i=1:k
     hold on
     [x0A,A0]=Xfine(x(i,:),A,JustSort);
     plot(x0A,A0,'b . ');
+     legend({'Simul'});
     if exist('ALPM','var')
         [x1y,y1]=Xfine(xFinal(:,i),ALPM,1);
         plot(x1y,y1,'r O');
+        legend({'Simul','Optimum Point in ALPM'});
     end
     %plot(xfinal(i), XfX,'r O')
     title('Portfo Analyze');
+    ylabel('ALPM')
     xlabel(['Weight of Asset #' num2str(i)]);
-    legend({'ALPM','Optimum Point in ALPM'})%,})
     hold off
     saveas(gcf,['out\' SenarioName '\wA' num2str(i) '.bmp'])
     close gcf
@@ -165,19 +179,22 @@ end
 figure();
 
 %[~,A0,r0]=f(xfinal);
-plot(A,r,'b . ');%,A0, r0,'r O');
+plot(A,r,'y . ');%,A0, r0,'r O');Simul
+legend({'s'});
 hold on
 if exist('Rt','var')
     plot(ALPM,Rt,'g');
+    legend(get(legend,'string'),{'ALPM'});
 end
 if exist('PM','var')
-    plot(PM.MV(:,1),PM.MV(:,2),'b',PM.CV(:,1),PM.CV(:,2),'r',PM.MAD(:,1),PM.MAD(:,2),'d');
+    plot(PM.MV.A,PM.MV.R,'b')%,PM.CV.A,PM.CV.A,'r',PM.MAD.A,PM.MAD.R,'d');
+    legend([get(legend,'string'),{'Mean-Variance'}]);%,'CVaR','MAD'})
 end
 
 title('Efficient Frontier');
 ylabel('Portfo Expected Return');
 xlabel('Portfo ALPM');
-legend({'Simul','ALPM','Mean-Variance','CVaR','MAD'})
+
 hold off
 saveas(gcf,['out\' SenarioName '\EC.bmp'])
 %close gcf
@@ -185,22 +202,48 @@ end
 %$$$$$$$$$$$$$$$$$$$$$$$###### Post Modern portfo Managment
 function [out]=MPM(NumPoint)
 % Define portfo
-global r1
-p0 = Portfolio('assetmean', mean(r1,1).', 'assetcovar', r1.'*r1, 'lb', 0.25, 'ub', 0.55);
-[rsk0,ret0]=p0.plotFrontier(NumPoint);
-out.MV=[rsk0,ret0];
-p1 = PortfolioCVaR;
-p1 = simulateNormalScenariosByData(p1, r1, 2000);
-p1 = PortfolioCVaR(p1,'lb', 0.25,'ub',0.55,  'ProbabilityLevel', 0.95); %'Scenarios', r1, 'Budget', 1,
-[rsk1,ret1]=p1.plotFrontier(NumPoint);
-out.CV=[rsk1,ret1];
-p2 = PortfolioMAD;
-p2 = simulateNormalScenariosByData(p2, r1, 2000);
-p2 = PortfolioMAD(p2,'lb', 0.25,'ub', 0.55);% 'Scenarios', r1,
 
-[rsk2,ret2]=plotFrontier(p2,NumPoint);
-out.MAD=[rsk2,ret2];
+global r1
+
+p = Portfolio('assetmean', mean(r1,1).', 'assetcovar', r1.'*r1);
+p = setDefaultConstraints(p);
+w = estimateFrontier(p,NumPoint);
+out.MV.W=w.';
+out.MV.R=nan(NumPoint,1);
+out.MV.A=nan(NumPoint,1);
+for i=1:NumPoint
+    [~,out.MV.A(i),out.MV.R(i)]=f(w(:,i));
+end
+% [rsk0,ret0]=p0.plotFrontier(NumPoint);
+% out.MV=[rsk0,ret0];
+p = PortfolioCVaR;
+p = simulateNormalScenariosByData(p, r1, 2000);
+p = setDefaultConstraints(p);
+p = PortfolioCVaR(p, 'ProbabilityLevel', 0.95); %'Scenarios', r1, 'Budget', 1,
+% [rsk1,ret1]=p1.plotFrontier(NumPoint);
+% out.CV=[rsk1,ret1];
+w = estimateFrontier(p,NumPoint);
+out.CV.W=w.';
+out.CV.R=nan(NumPoint,1);
+out.CV.A=nan(NumPoint,1);
+for i=1:NumPoint
+    [~,out.CV.A(i),out.CV.R(i)]=f(w(:,i));
+end
+p = PortfolioMAD;
+p = simulateNormalScenariosByData(p, r1, 2000);
+p = setDefaultConstraints(p);
+%p2 = PortfolioMAD(p2,'lb', 0.25,'ub', 0.55);% 'Scenarios', r1,
+w = estimateFrontier(p,NumPoint);
+out.MAD.W=w.';
+out.MAD.R=nan(NumPoint,1);
+out.MAD.A=nan(NumPoint,1);
+for i=1:NumPoint
+    [~,out.MAD.A(i),out.MAD.R(i)]=f(w(:,i));
+end
+% [rsk2,ret2]=plotFrontier(p2,NumPoint);
+% out.MAD=[rsk2,ret2];
 close all
+%}
 end
 %####################### Sampler Objective Function
 function [y,A,rB]=f(w1)
@@ -219,6 +262,7 @@ w1(k+1:end)=[];
 
 % build final Weight
 w1(k,1)=1-sum(w1(1:k-1));
+
 % check
 if any(w1>1) || any(w1<0)
     A=10^10;
@@ -691,7 +735,7 @@ if CoverOlp==1
     disp('/\/\/\/\/\/\/\/\/\/\/\/\/\ Covering Oulier Point /\/\/\/\/\/\/\/\/\/\/\');
     [~,~,OutR]=Outer(Rt,ALPM,xSam.',ASam.',rSam.');
     L=length(OutR);
-    disp(['/*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\ (' num2str(L) ') outlaw points found from ''. /*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\']);
+    disp(['/*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\ (' num2str(L) ') outlaw points found from ' length(rSam) ' Sample . /*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\']);
     if L>0
      x00=repmat(0.5,k,L);  
      lb=[zeros(k-1,1);0];
