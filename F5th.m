@@ -57,9 +57,9 @@ for s=1:S
     % Create Efficiency Curve
     if JustSimulation==0
         [Rt,ALPM,xFinal]=findEC(x,A,r,k,nn,Resolution,CoverOut);
-        PM=MPM(length(Rt));
+        PM=MPM(Rt);
     else
-        PM=MPM(Resolution);
+        PM=MPM([],Resolution);
     end
     
     
@@ -72,8 +72,10 @@ for s=1:S
         Grph(JustSort,x,A,r,SenarioName,PM);% plot Graph
     end
     disp(['************ Senrio: ' SenarioName ' Was Completed. *****************']);
+    disp(['Elapsed Time is: ' datestr(toc/(24*3600), 'HH:MM:SS')]);
 end
-toc
+
+
 end
 %****************************************** Data Exporting
 function  Expt(x,A,r,SenarioName,PM,Rt,ALPM,xFinal)
@@ -100,17 +102,20 @@ Fxl=[mat2dataset(x.','VarNames',Capx),dataset(A.',r.','VarNames',{'ALPM','Return
 export(Fxl,'xlsfile',['out\' SenarioName '\Siml.xlsx']);
 clear Fxl
 % Exporting Simulation Data Efficiency Curve
+
 if exist('Rt','var')
-    Fxl=[mat2dataset(xFinal,'VarNames',Capx),dataset(Rt,ALPM,'VarNames',{'Return','ALPM'})];
-    export(Fxl,'xlsfile',['out\' SenarioName '\EFA.xlsx'])
+    Fxl=[mat2dataset(xFinal,'VarNames',Capx),dataset(ALPM,Rt,'VarNames',{'ALPM','Return'})];
+    %export(Fxl,'xlsfile',['out\' SenarioName '\EFA.xlsx'])
+else
+    Fxl=dataset();
 end
 % Fxl=cell(k+1+6,2);
 if exist('PM','var')
-    Fxl0=dataset(PM.MV.A,PM.MV.R,PM.CV.A,PM.CV.R,PM.MAD.A,PM.MAD.R,'VarNames',{'Mean_Var_Risk' 'Mean_Var_Return' 'CVaR_Risk' 'CVaR_Return' 'Absolute_Deviation_Risk' 'Absolute_Deviation_Return'});
-    export(Fxl0,'xlsfile',['out\' SenarioName '\EFM.xlsx'])
+    Fxl=[Fxl, dataset(PM.MV.A,PM.MV.R,PM.CV.A,PM.CV.R,PM.MAD.A,PM.MAD.R,'VarNames',{'Mean_Var_ALPM' 'Mean_Var_Return' 'CVaR_ALPM' 'CVaR_Return' 'Absolute_Deviation_ALPM' 'Absolute_Deviation_Return'})];
+    %export(Fxl0,'xlsfile',['out\' SenarioName '\EFM.xlsx'])
 end
 
-
+export(Fxl,'XLSfile',['out\' SenarioName '\EF.xlsx'])
 
 
 Fxl=table();
@@ -133,21 +138,21 @@ end
 k=size(x,1);
 % plot Graph
 for i=1:k
-    ksdensity(r1(:,k));
+    hist(r1(:,i));% ksdensity
     title(['Kernel of Asset #' num2str(i)]);
     saveas(gcf,['out\' SenarioName '\Kr' num2str(i) '.bmp'])
     close gcf
-end
-for i=1:k
+% end
+% for i=1:k
     figure();
     hold on
     [x0r,r0] =Xfine(x(i,:),r,1); % Just Sorted and not refined in any case
     plot(x0r,r0,'b . ');
-    legend({'Simul'});
+    legend({'Simulation'});
     if exist('Rt','var')
         [x0y,y0]=Xfine(xFinal(:,i),Rt,1);
-        plot(x0y,y0,'r O');
-        legend({'Simul','Optimum Point in Return'});%,})
+        plot(x0y,y0,'r*');
+        legend({'Simulation','Optimum Point in Return'});%,})
     end
     %plot(xfinal(i), XfX,'r O')
     title('Portfo Analyze');
@@ -162,11 +167,11 @@ for i=1:k
     hold on
     [x0A,A0]=Xfine(x(i,:),A,JustSort);
     plot(x0A,A0,'b . ');
-    legend({'Simul'});
+    legend({'Simulation'});
     if exist('ALPM','var')
         [x1y,y1]=Xfine(xFinal(:,i),ALPM,1);
         plot(x1y,y1,'r O');
-        legend({'Simul','Optimum Point in ALPM'});
+        legend({'Simulation','Optimum Point in ALPM'});
     end
     %plot(xfinal(i), XfX,'r O')
     title('Portfo Analyze');
@@ -182,16 +187,20 @@ end
 figure();
 
 %[~,A0,r0]=f(xfinal);
-plot(A,r,'y . ');%,A0, r0,'r O');Simul
-legend({'s'});
+
 hold on
 if exist('Rt','var')
     plot(ALPM,Rt,'g');
     legend([get(legend,'string'),{'ALPM'}]);
+else
+    plot(A,r,'y . ');%,A0, r0,'r O');Simul
+    legend({'Simulation'});
 end
 if exist('PM','var')
-    plot(PM.MV.A,PM.MV.R,'b')%,PM.CV.A,PM.CV.A,'r',PM.MAD.A,PM.MAD.R,'d');
-    legend([get(legend,'string'),{'Mean-Variance'}]);%,'CVaR','MAD'})
+    %     plot(PM.MV.A,PM.MV.R,'b')%,PM.CV.A,PM.CV.A,'r',PM.MAD.A,PM.MAD.R,'d');
+    %     legend([get(legend,'string'),{'Mean-Variance'}]);%,'CVaR','MAD'})
+    plot(PM.MV.A,PM.MV.R,'b.',PM.CV.A,PM.CV.R,'r-.',PM.MAD.A,PM.MAD.R,'c--');
+    legend([get(legend,'string'),{'Mean-Variance','CVaR','MAD'}]);
 end
 
 title('Efficient Frontier');
@@ -203,49 +212,96 @@ saveas(gcf,['out\' SenarioName '\EC.bmp'])
 %close gcf
 end
 %$$$$$$$$$$$$$$$$$$$$$$$###### Post Modern portfo Managment
-function [out]=MPM(NumPoint)
+function [out]=MPM(ret,NumPoint)
 % Define portfo
 
 global r1
-
-p = Portfolio('assetmean', mean(r1,1).', 'assetcovar', r1.'*r1);
-p = setDefaultConstraints(p);
-w = estimateFrontier(p,NumPoint);
-out.MV.W=w.';
+if ~isempty(ret)
+    
+    p0 = Portfolio('assetmean', mean(r1,1).', 'assetcovar', r1.'*r1);
+    p0 = setDefaultConstraints(p0);
+    w0 = estimateFrontierByReturn(p0,ret);
+    
+    p1 = PortfolioCVaR;
+    p1 = simulateNormalScenariosByData(p1, r1, 2000);
+    p1 = setDefaultConstraints(p1);
+    p1 = PortfolioCVaR(p1, 'ProbabilityLevel', 0.95); %'Scenarios', r1, 'Budget', 1,
+    w1 = estimateFrontierByReturn(p1,ret);
+    
+    p2 = PortfolioMAD;
+    p2 = simulateNormalScenariosByData(p2, r1, 2000);
+    p2 = setDefaultConstraints(p2);
+    %p2 = PortfolioMAD(p2,'lb', 0.25,'ub', 0.55);% 'Scenarios', r1,
+    w2 = estimateFrontierByReturn(p2,ret);
+    NumPoint=length(ret);
+else
+    if ~isempty('NumPoint','var')
+        NumPoint=10;
+    end
+    p0 = Portfolio('assetmean', mean(r1,1).', 'assetcovar', r1.'*r1);
+    p0 = setDefaultConstraints(p0);
+    w0 = estimateFrontier(p0,NumPoint);
+    
+    p1 = PortfolioCVaR;
+    p1 = simulateNormalScenariosByData(p1, r1, 2000);
+    p1 = setDefaultConstraints(p1);
+    p1 = PortfolioCVaR(p1, 'ProbabilityLevel', 0.95); %'Scenarios', r1, 'Budget', 1,
+    w1 = estimateFrontier(p1,NumPoint);
+    
+    p2 = PortfolioMAD;
+    p2 = simulateNormalScenariosByData(p2, r1, 2000);
+    p2 = setDefaultConstraints(p2);
+    %p2 = PortfolioMAD(p2,'lb', 0.25,'ub', 0.55);% 'Scenarios', r1,
+    w2 = estimateFrontier(p2,NumPoint);
+    
+end
+out.MV.W=w0.';
 out.MV.R=nan(NumPoint,1);
 out.MV.A=nan(NumPoint,1);
 for i=1:NumPoint
-    [~,out.MV.A(i),out.MV.R(i)]=f(w(:,i));
+    [~,out.MV.A(i),out.MV.R(i)]=f(w0(:,i));
+    if out.MV.R(i)<=-10^9
+        out.MV.R(i)=nan;
+        out.MV.A(i)=nan;
+        out.MV.W(i,:)=nan;
+    end
+    
 end
-% [rsk0,ret0]=p0.plotFrontier(NumPoint);
-% out.MV=[rsk0,ret0];
-p = PortfolioCVaR;
-p = simulateNormalScenariosByData(p, r1, 2000);
-p = setDefaultConstraints(p);
-p = PortfolioCVaR(p, 'ProbabilityLevel', 0.95); %'Scenarios', r1, 'Budget', 1,
+
 % [rsk1,ret1]=p1.plotFrontier(NumPoint);
 % out.CV=[rsk1,ret1];
-w = estimateFrontier(p,NumPoint);
-out.CV.W=w.';
+
+out.CV.W=w1.';
 out.CV.R=nan(NumPoint,1);
 out.CV.A=nan(NumPoint,1);
 for i=1:NumPoint
-    [~,out.CV.A(i),out.CV.R(i)]=f(w(:,i));
+    [~,out.CV.A(i),out.CV.R(i)]=f(w1(:,i));
+    if out.CV.R(i)<=-10^9
+        out.CV.R(i)=nan;
+        out.CV.A(i)=nan;
+        out.CV.W(i,:)=nan;
+    end
 end
-p = PortfolioMAD;
-p = simulateNormalScenariosByData(p, r1, 2000);
-p = setDefaultConstraints(p);
-%p2 = PortfolioMAD(p2,'lb', 0.25,'ub', 0.55);% 'Scenarios', r1,
-w = estimateFrontier(p,NumPoint);
-out.MAD.W=w.';
+%[out.CV.W,out.CV.A,out.CV.R]=refinery(out.CV.W,out.CV.A,out.CV.R);
+%[out.MV.W,out.MV.A,out.MV.R]=refinery(out.MV.W,out.MV.A,out.MV.R);
+% [rsk0,ret0]=p0.plotFrontier(NumPoint);
+% out.MV=[rsk0,ret0];
+
+out.MAD.W=w2.';
 out.MAD.R=nan(NumPoint,1);
 out.MAD.A=nan(NumPoint,1);
 for i=1:NumPoint
-    [~,out.MAD.A(i),out.MAD.R(i)]=f(w(:,i));
+    [~,out.MAD.A(i),out.MAD.R(i)]=f(w2(:,i));
+    if out.MAD.R(i)<=-10^9
+        out.MAD.R(i)=nan;
+        out.MAD.A(i)=nan;
+        out.MAD.W(i,:)=nan;
+    end
 end
+%[out.MAD.W,out.MAD.A,out.MAD.R]=refinery(out.MAD.W,out.MAD.A,out.MAD.R);
 % [rsk2,ret2]=plotFrontier(p2,NumPoint);
 % out.MAD=[rsk2,ret2];
-close all
+%close all
 %}
 end
 %####################### Sampler Objective Function
@@ -687,28 +743,22 @@ if nargin<6
 end
 [xSam,ASam,rSam]=refinery(xSam.',ASam.',rSam.');
 xSam=xSam.'; ASam=ASam.'; rSam=rSam.';
-% xSam(:,~isfinite(rSam))=[];
-% ASam(:,~isfinite(rSam))=[];
-% rSam(:,~isfinite(rSam))=[];
+
 rSam0=rSam;
 L=length(rSam0);
 if L<1
     warning('Bad Parametrization. No Efficeincy frontier Created.');
     return
 end
-% if isnan(Resolution) || Resolution>L-1
-%     Resolution=L;
-% end
-% if Resolution>1
-%     Stp=fix(L/(Resolution-1));
-% else
-%     Stp= 1;
-% end
-%% assymetric poinr distribution
-r = unique(fix(betarnd(1.2,12,1,Resolution)*L));
-r=unique([r,1,L]);
 
+%% assymetric point distribution
+r = unique([fix(random('beta',1.5,8,1,3*Resolution)*L),1,L]);%betarnd(1.4,10,1,Resolution)*L));
 r(r<1 | r>L)=[];
+if length(r)>Resolution
+    nk=length(r)-Resolution;
+  r = r(1:end-nk);
+end
+
 % rSam0=[rSam0(1:Stp:L-1),rSam0(L)];
 % ia=[ia(1:Stp:L-1).',ia(L)];
 rSam0=rSam0(r);
@@ -818,8 +868,10 @@ for l=1:L
     end
     [~,A(l),R(l)]=f(xfinal0);
     Wx(l,:)=xfinal0.';
-    home;
-    disp([num2str(100*l/(L+1)) ' Percent is completed.']);
+    %home;
+    disp('------------------------------------------------');
+    disp([num2str(round(100*l/(L+1),1)) ' Percent is completed.']);
+    disp('------------------------------------------------');
 end
 Wx(R<-10^9,:)=[];
 A(R<-10^9)=[];
