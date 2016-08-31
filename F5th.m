@@ -259,6 +259,8 @@ else
     w2 = estimateFrontier(p2,NumPoint);
     
 end
+
+
 out.MV.W=w0.';
 out.MV.R=nan(NumPoint,1);
 out.MV.A=nan(NumPoint,1);
