@@ -138,12 +138,15 @@ end
 k=size(x,1);
 % plot Graph
 for i=1:k
+    try %#ok<TRYNC>
     hist(r1(:,i));% ksdensity
     title(['Kernel of Asset #' num2str(i)]);
     saveas(gcf,['out\' SenarioName '\Kr' num2str(i) '.bmp'])
     close gcf
-% end
-% for i=1:k
+    end
+ end
+ for i=1:k
+     try
     figure();
     hold on
     [x0r,r0] =Xfine(x(i,:),r,1); % Just Sorted and not refined in any case
@@ -180,6 +183,7 @@ for i=1:k
     hold off
     saveas(gcf,['out\' SenarioName '\wA' num2str(i) '.bmp'])
     close gcf
+end
 end
 % efficient frontier
 [r,A]=Xfine(r,A,JustSort);
