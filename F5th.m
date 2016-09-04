@@ -87,9 +87,10 @@ end
 if ~exist('out','dir')
     mkdir('out')
 end
-if ~exist(['out\' SenarioName],'dir')
-    mkdir(['out\' SenarioName])
+if exist(['out\' SenarioName],'dir')
+    rmdir(['out\' SenarioName],'s');
 end
+mkdir(['out\' SenarioName]);
 
 k=size(x,1);
 Capx=cell(1,k);
@@ -139,51 +140,51 @@ k=size(x,1);
 % plot Graph
 for i=1:k
     try %#ok<TRYNC>
-    hist(r1(:,i));% ksdensity
-    title(['Kernel of Asset #' num2str(i)]);
-    saveas(gcf,['out\' SenarioName '\Kr' num2str(i) '.bmp'])
-    close gcf
+        hist(r1(:,i));% ksdensity
+        title(['Kernel of Asset #' num2str(i)]);
+        saveas(gcf,['out\' SenarioName '\Kr' num2str(i) '.bmp'])
+        close gcf
     end
- end
- for i=1:k
-     try
-    figure();
-    hold on
-    [x0r,r0] =Xfine(x(i,:),r,1); % Just Sorted and not refined in any case
-    plot(x0r,r0,'b . ');
-    legend({'Simulation'});
-    if exist('Rt','var')
-        [x0y,y0]=Xfine(xFinal(:,i),Rt,1);
-        plot(x0y,y0,'r*');
-        legend({'Simulation','Optimum Point in Return'});%,})
-    end
-    %plot(xfinal(i), XfX,'r O')
-    title('Portfo Analyze');
-    ylabel('Return');
-    xlabel(['Weight of Asset #' num2str(i)]);
-    
-    hold off
-    saveas(gcf,['out\' SenarioName '\wR' num2str(i) '.bmp'])
-    close gcf
-    %------------------------------------------------------
-    figure();
-    hold on
-    [x0A,A0]=Xfine(x(i,:),A,JustSort);
-    plot(x0A,A0,'b . ');
-    legend({'Simulation'});
-    if exist('ALPM','var')
-        [x1y,y1]=Xfine(xFinal(:,i),ALPM,1);
-        plot(x1y,y1,'r O');
-        legend({'Simulation','Optimum Point in ALPM'});
-    end
-    %plot(xfinal(i), XfX,'r O')
-    title('Portfo Analyze');
-    ylabel('ALPM')
-    xlabel(['Weight of Asset #' num2str(i)]);
-    hold off
-    saveas(gcf,['out\' SenarioName '\wA' num2str(i) '.bmp'])
-    close gcf
 end
+for i=1:k
+    try
+        figure();
+        hold on
+        [x0r,r0] =Xfine(x(i,:),r,1); % Just Sorted and not refined in any case
+        plot(x0r,r0,'b . ');
+        legend({'Simulation'});
+        if exist('Rt','var')
+            [x0y,y0]=Xfine(xFinal(:,i),Rt,1);
+            plot(x0y,y0,'r*');
+            legend({'Simulation','Optimum Point in Return'});%,})
+        end
+        %plot(xfinal(i), XfX,'r O')
+        title('Portfo Analyze');
+        ylabel('Return');
+        xlabel(['Weight of Asset #' num2str(i)]);
+        
+        hold off
+        saveas(gcf,['out\' SenarioName '\wR' num2str(i) '.bmp'])
+        close gcf
+        %------------------------------------------------------
+        figure();
+        hold on
+        [x0A,A0]=Xfine(x(i,:),A,JustSort);
+        plot(x0A,A0,'b . ');
+        legend({'Simulation'});
+        if exist('ALPM','var')
+            [x1y,y1]=Xfine(xFinal(:,i),ALPM,1);
+            plot(x1y,y1,'r*');
+            legend({'Simulation','Optimum Point in ALPM'});
+        end
+        %plot(xfinal(i), XfX,'r O')
+        title('Portfo Analyze');
+        ylabel('ALPM')
+        xlabel(['Weight of Asset #' num2str(i)]);
+        hold off
+        saveas(gcf,['out\' SenarioName '\wA' num2str(i) '.bmp'])
+        close gcf
+    end
 end
 % efficient frontier
 [r,A]=Xfine(r,A,JustSort);
@@ -224,19 +225,19 @@ if ~isempty(ret)
     
     p0 = Portfolio('assetmean', mean(r1,1).', 'assetcovar', r1.'*r1);
     p0 = setDefaultConstraints(p0);
-    w0 = estimateFrontierByReturn(p0,ret);
+    w0 = estimateFrontierByReturn(p0,ret)*100;
     
     p1 = PortfolioCVaR;
     p1 = simulateNormalScenariosByData(p1, r1, 2000);
     p1 = setDefaultConstraints(p1);
     p1 = PortfolioCVaR(p1, 'ProbabilityLevel', 0.95); %'Scenarios', r1, 'Budget', 1,
-    w1 = estimateFrontierByReturn(p1,ret);
+    w1 = estimateFrontierByReturn(p1,ret)*100;
     
     p2 = PortfolioMAD;
     p2 = simulateNormalScenariosByData(p2, r1, 2000);
     p2 = setDefaultConstraints(p2);
     %p2 = PortfolioMAD(p2,'lb', 0.25,'ub', 0.55);% 'Scenarios', r1,
-    w2 = estimateFrontierByReturn(p2,ret);
+    w2 = estimateFrontierByReturn(p2,ret)*100;
     NumPoint=length(ret);
 else
     if ~isempty('NumPoint','var')
@@ -244,19 +245,19 @@ else
     end
     p0 = Portfolio('assetmean', mean(r1,1).', 'assetcovar', r1.'*r1);
     p0 = setDefaultConstraints(p0);
-    w0 = estimateFrontier(p0,NumPoint);
+    w0 = estimateFrontier(p0,NumPoint)*100;
     
     p1 = PortfolioCVaR;
     p1 = simulateNormalScenariosByData(p1, r1, 2000);
     p1 = setDefaultConstraints(p1);
     p1 = PortfolioCVaR(p1, 'ProbabilityLevel', 0.95); %'Scenarios', r1, 'Budget', 1,
-    w1 = estimateFrontier(p1,NumPoint);
+    w1 = estimateFrontier(p1,NumPoint)*100;
     
     p2 = PortfolioMAD;
     p2 = simulateNormalScenariosByData(p2, r1, 2000);
     p2 = setDefaultConstraints(p2);
     %p2 = PortfolioMAD(p2,'lb', 0.25,'ub', 0.55);% 'Scenarios', r1,
-    w2 = estimateFrontier(p2,NumPoint);
+    w2 = estimateFrontier(p2,NumPoint)*100;
     
 end
 
@@ -315,7 +316,7 @@ function [y,A,rB]=f(w1)
 % check the weights illegal usage
 % the number of degree of freedome is k-1
 global r1 alpha b beta a c Tau
-
+w1=w1./100;
 % Extract number of Obsevation
 [n,k] =size(r1);
 
@@ -397,9 +398,9 @@ end
 function [x,y,A,r,ASigma]=Simul(xfinal,nn)
 k=size(xfinal,1);
 ASigma=xfinal./4;%repmat(0.02,k,1)
-ASigma(xfinal>0.5)=(1-xfinal(xfinal>0.5))./4;
+ASigma(xfinal>50)=(1-xfinal(xfinal>50))./4;
 % Extreme Result ignorance
-ASigma(ASigma<10^-4)=0.25;
+ASigma(ASigma<10^-4)=25;
 %
 Sigma=diag(ASigma.^2);
 x=mvnrnd(xfinal,Sigma,nn).';%MU,SIGMA,n
@@ -487,8 +488,9 @@ c=Beq-mean(r);
 end
 %***********************************************  Sample Biulder
 function [x,A,r]=OpO(k,nn)
+nn=k*nn;
 % this function just replicate a good sample
-x = randfixedsum(k,nn,1,0,1);
+x = randfixedsum(k,nn,100,0,100);
 A=nan(1,nn);
 %y=A;
 r=A;
@@ -740,7 +742,7 @@ end
 %***********************************************  Efficiency Curve Biulder
 function [Rt,ALPM,WeI]=findEC(xSam,ASam,rSam,k,nn,Resolution,CoverOlp)
 disp('Optimization of Efficiency Curve is Started');
-% global Beq
+global r1
 if nargin<7
     CoverOlp=0;
 end
@@ -756,32 +758,38 @@ if L<1
     warning('Bad Parametrization. No Efficeincy frontier Created.');
     return
 end
-
+rr=mean(r1);
+rmin=min(rr);
+rmax=max(rr);
 %% assymetric point distribution
-r = unique([fix(random('beta',1.5,8,1,3*Resolution)*L),1,L]);%betarnd(1.4,10,1,Resolution)*L));
-r(r<1 | r>L)=[];
-if length(r)>Resolution
-    nk=length(r)-Resolution;
-  r = r(1:end-nk);
-end
+r =rmin+random('beta',1.5,8,1,Resolution)*(rmax-rmin);%unique([fix(random('beta',1.5,8,1,3*Resolution)*L),1,L]);%betarnd(1.4,10,1,Resolution)*L));
+r(r<rmin | r>rmax)=[];
+r=[rmin,r];
+rSam0=unique(r);
+% if length(r)>Resolution
+%   nk=length(r)-Resolution;
+%   r = r(1:end-nk);
+% end
+
+%rSam0=sort(r);
 
 % rSam0=[rSam0(1:Stp:L-1),rSam0(L)];
 % ia=[ia(1:Stp:L-1).',ia(L)];
-rSam0=rSam0(r);
-L=length(rSam0);
-x00=zeros(k,L);
+%rSam0=rSam0(r);
+L=length(r);
+x00=ones(k,L).*(100/k);
 
 % Rt=nan(L,1);
 % ALPM=Rt;
 % WeI=nan(L,k);
 
-for l=1:L
-    A=min(ASam(r(l)));
-    [~,I]=find(ASam==A);
-    x00(1:k-1,l)=xSam(1:k-1,I(1));
-end
+% for l=1:L
+%     A=min(ASam(r(l)));
+%     [~,I]=find(ASam==A);
+%     x00(1:k-1,l)=xSam(1:k-1,I(1));
+% end
 lb=[zeros(k-1,1);0];
-ub=[ones(k-1,1);0];
+ub=[100*ones(k-1,1);0];
 
 [WeI,ALPM,Rt]=Optimiz(rSam0,xSam,ASam,rSam,x00,lb,ub,k,nn);
 
@@ -795,9 +803,9 @@ if CoverOlp==1
     L=length(OutR);
     disp(['/*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\ (' num2str(L) ') outlaw points found from ' length(rSam) ' Sample . /*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\']);
     if L>0
-        x00=repmat(0.5,k,L);
+        x00=repmat(100/k,k,L);
         lb=[zeros(k-1,1);0];
-        ub=[ones(k-1,1);0];
+        ub=[100.*ones(k-1,1);0];
         
         [WeIA,ALPMA,RtA]=Optimiz(OutR.',xSam,ASam,rSam,x00,lb,ub,k,nn);
         
@@ -846,7 +854,7 @@ for l=1:L
         % xfinal is the optimum weght for asset one
         % XfX is the Valu of objective function
         [xfinal, XfX,exitflag] = run(gs,problem);
-        xfinal(k)=1-sum(xfinal(1:k-1)); % Correct the Last Element
+        xfinal(k)=100-sum(xfinal(1:k-1)); % Correct the Last Element
         if XfX<XfX0 || exitflag~=-2 || exitflag~=-8
             %             XfX=XfX0;
             %xfinal=xfinal0;
