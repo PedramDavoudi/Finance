@@ -486,6 +486,40 @@ c=Beq-mean(r);
 
 
 end
+% Revesrse get R and return w
+function [w]=Reversef(rB)
+% check the weights illegal usage
+% the number of degree of freedome is k-1
+global r1 
+% Extract number of Obsevation
+[~,k] =size(r1);
+W= sym('W',[k,1]);
+%assume(W>=0 & W<=1);
+%assumeAlso(sum(W)==1);
+% Check length of w1
+r=mean(r1);
+J=@(x)(r*x.'-rB)^2;
+
+%Teta=symvar(W);
+
+%
+StartingPoint=repmat(1/k,1,k);
+Aeq=ones(1,k);
+A=[];
+beq = 1;
+b=[];
+nonlcon=[];
+%gradf = @(x)2*(r*x.'-rB)*r; % column gradf
+%hessf =  @(x)(2*ones(k,k));
+
+options = optimoptions('fmincon', ...
+    'SpecifyObjectiveGradient', false, ...
+    'Algorithm','interior-point', ...
+    'Display','final','MaxFunctionEvaluations',10^20);% interior-point %trust-region-reflective
+[x,fval,exitflag] = fmincon(J,StartingPoint,A,b,Aeq,beq,zeros(1,k),ones(1,k),nonlcon,options);
+w=x.'*100;
+
+end
 %***********************************************  Sample Biulder
 function [x,A,r]=OpO(k,nn)
 %nn=k*nn;
@@ -676,12 +710,13 @@ xq=ASam;
 %Completed the curve
 yv(end+1)=0;
 xv(end+1)=0;
-yv(end+1)=2*max(yq);
-xv(end+1)=2*max(xq);
+
 
 % Sort data
 [yv,I]=unique(yv);
 xv=xv(I);
+yv(end+1)=yv(end);
+xv(end+1)=2*max(xq);
 yv(end+1)=0;
 xv(end+1)=2*max(xq);
 yv(end+1)=0;
@@ -739,92 +774,7 @@ A=A(any(isfinite(x),2));
 R=R(any(isfinite(x),2));
 x=x(any(isfinite(x),2),:);
 end
-%***********************************************  Efficiency Curve Biulder
-function [Rt,ALPM,WeI]=findEC(xSam,ASam,rSam,k,nn,Resolution,CoverOlp)
-disp('Optimization of Efficiency Curve is Started');
-global r1
-if nargin<7
-    CoverOlp=0;
-end
-if nargin<6
-    Resolution=nan;
-end
-[xSam,ASam,rSam]=refinery(xSam.',ASam.',rSam.');
-xSam=xSam.'; ASam=ASam.'; rSam=rSam.';
-
-rSam0=rSam;
-L=length(rSam0);
-if L<1
-    warning('Bad Parametrization. No Efficeincy frontier Created.');
-    return
-end
-rr=mean(r1);
-rmin=min(rr);
-rmax=max(rr);
-%% assymetric point distribution
-r =rmin+random('beta',3,4,1,Resolution)*(rmax-rmin);%unique([fix(random('beta',1.5,8,1,3*Resolution)*L),1,L]);%betarnd(1.4,10,1,Resolution)*L));
-r(r<rmin | r>rmax)=[];
-r=[rmin,r];
-rSam0=unique(r);
-% if length(r)>Resolution
-%   nk=length(r)-Resolution;
-%   r = r(1:end-nk);
-% end
-
-%rSam0=sort(r);
-
-% rSam0=[rSam0(1:Stp:L-1),rSam0(L)];
-% ia=[ia(1:Stp:L-1).',ia(L)];
-%rSam0=rSam0(r);
-L=length(rSam0);
-x00=ones(k,L).*(100/k);
-for l=1:L
-    x00(:,l)=Reversef(rSam0(l));
-end
-% Rt=nan(L,1);
-% ALPM=Rt;
-% WeI=nan(L,k);
-
-% for l=1:L
-%     A=min(ASam(r(l)));
-%     [~,I]=find(ASam==A);
-%     x00(1:k-1,l)=xSam(1:k-1,I(1));
-% end
-lb=[zeros(k-1,1);0];
-ub=[100*ones(k-1,1);0];
-
-[WeI,ALPM,Rt]=Optimiz(rSam0,xSam,ASam,rSam,x00,lb,ub,k,nn);
-
-%%
-%------------------ Find Oulier point
-if CoverOlp==1
-    beep
-    home;
-    disp('/\/\/\/\/\/\/\/\/\/\/\/\/\ Covering Oulier Point /\/\/\/\/\/\/\/\/\/\/\');
-    [~,~,OutR]=Outer(Rt,ALPM,xSam.',ASam.',rSam.');
-    L=length(OutR);
-    disp(['/*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\ (' num2str(L) ') outlaw points found from ' length(rSam) ' Sample . /*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\']);
-    if L>0
-        x00=repmat(100/k,k,L);
-        lb=[zeros(k-1,1);0];
-        ub=[100.*ones(k-1,1);0];
-        
-        [WeIA,ALPMA,RtA]=Optimiz(OutR.',xSam,ASam,rSam,x00,lb,ub,k,nn);
-        
-        WeI=[WeI;WeIA];
-        ALPM=[ALPM;ALPMA];
-        Rt=[Rt;RtA];
-    end
-end
-
-
-%%
-% refine data
-[WeI,ALPM,Rt]=refinery(WeI,ALPM,Rt);
-%home;
-disp('**************%*********%********* efficieny Curve is completed. ****%********%**********');
-end
-
+% Optimizer
 function [Wx,A,R]=Optimiz(rSam0,xSam,ASam,rSam,x00,lb,ub,k,nn)
 global Beq
 % rSam0=r;
@@ -894,36 +844,92 @@ A(R<-10^9)=[];
 R(R<-10^9)=[];
 end
 
-function [w]=Reversef(rB)
-% check the weights illegal usage
-% the number of degree of freedome is k-1
-global r1 
-% Extract number of Obsevation
-[~,k] =size(r1);
-W= sym('W',[k,1]);
-%assume(W>=0 & W<=1);
-%assumeAlso(sum(W)==1);
-% Check length of w1
-r=mean(r1);
-J=@(x)(r*x.'-rB)^2;
+%***********************************************  Efficiency Curve Biulder
+function [Rt,ALPM,WeI]=findEC(xSam,ASam,rSam,k,nn,Resolution,CoverOlp)
+disp('Optimization of Efficiency Curve is Started');
+global r1
+if nargin<7
+    CoverOlp=0;
+end
+if nargin<6
+    Resolution=nan;
+end
+[xSam,ASam,rSam]=refinery(xSam.',ASam.',rSam.');
+xSam=xSam.'; ASam=ASam.'; rSam=rSam.';
 
-%Teta=symvar(W);
+rSam0=rSam;
+L=length(rSam0);
+if L<1
+    warning('Bad Parametrization. No Efficeincy frontier Created.');
+    return
+end
+rr=mean(r1);
+rmin=min(rr);
+rmax=max(rr);
+%% assymetric point distribution
+%r =rmin+random('beta',3,4,1,Resolution)*(rmax-rmin);%unique([fix(random('beta',1.5,8,1,3*Resolution)*L),1,L]);%betarnd(1.4,10,1,Resolution)*L));
+r =random('uni',rmin,rmax,1,Resolution);%unique([fix(random('beta',1.5,8,1,3*Resolution)*L),1,L]);%betarnd(1.4,10,1,Resolution)*L));
 
-%
-StartingPoint=repmat(1/k,1,k);
-Aeq=ones(1,k);
-A=[];
-beq = 1;
-b=[];
-nonlcon=[];
-%gradf = @(x)2*(r*x.'-rB)*r; % column gradf
-%hessf =  @(x)(2*ones(k,k));
+r(r<rmin | r>rmax)=[];
 
-options = optimoptions('fmincon', ...
-    'SpecifyObjectiveGradient', false, ...
-    'Algorithm','interior-point', ...
-    'Display','final','MaxFunctionEvaluations',10^20);% interior-point %trust-region-reflective
-[x,fval,exitflag] = fmincon(J,StartingPoint,A,b,Aeq,beq,zeros(1,k),ones(1,k),nonlcon,options);
-w=x.'*100;
+r=[rmin,r];
+rSam0=unique(r);
+% if length(r)>Resolution
+%   nk=length(r)-Resolution;
+%   r = r(1:end-nk);
+% end
 
+%rSam0=sort(r);
+
+% rSam0=[rSam0(1:Stp:L-1),rSam0(L)];
+% ia=[ia(1:Stp:L-1).',ia(L)];
+%rSam0=rSam0(r);
+L=length(rSam0);
+x00=ones(k,L).*(100/k);
+for l=1:L
+    x00(:,l)=Reversef(rSam0(l));
+end
+% Rt=nan(L,1);
+% ALPM=Rt;
+% WeI=nan(L,k);
+
+% for l=1:L
+%     A=min(ASam(r(l)));
+%     [~,I]=find(ASam==A);
+%     x00(1:k-1,l)=xSam(1:k-1,I(1));
+% end
+lb=[zeros(k-1,1);0];
+ub=[100*ones(k-1,1);0];
+
+[WeI,ALPM,Rt]=Optimiz(rSam0,xSam,ASam,rSam,x00,lb,ub,k,nn);
+
+%%
+%------------------ Find Oulier point
+if CoverOlp==1
+    beep
+    home;
+    disp('/\/\/\/\/\/\/\/\/\/\/\/\/\ Covering Oulier Point /\/\/\/\/\/\/\/\/\/\/\');
+    [Outw,OutA,OutR]=Outer(Rt,ALPM,xSam.',ASam.',rSam.');
+    [~,~,OutR]=refinery(Outw,OutA,OutR);
+    L=length(OutR);
+    disp(['/*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\ (' num2str(L) ') outlaw points found from ' num2str(length(rSam)) ' Sample . /*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\']);
+    if L>0
+        x00=repmat(100/k,k,L);
+        lb=[zeros(k-1,1);0];
+        ub=[100.*ones(k-1,1);0];
+        
+        [WeIA,ALPMA,RtA]=Optimiz(OutR.',xSam,ASam,rSam,x00,lb,ub,k,nn);
+        
+        WeI=[WeI;WeIA];
+        ALPM=[ALPM;ALPMA];
+        Rt=[Rt;RtA];
+    end
+end
+
+
+%%
+% refine data
+[WeI,ALPM,Rt]=refinery(WeI,ALPM,Rt);
+%home;
+disp('**************%*********%********* efficieny Curve is completed. ****%********%**********');
 end
