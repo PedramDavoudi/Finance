@@ -872,7 +872,7 @@ r =random('uni',rmin,rmax,1,Resolution);%unique([fix(random('beta',1.5,8,1,3*Res
 
 r(r<rmin | r>rmax)=[];
 
-r=[rmin,r];
+r=[rmin,r,rmax];
 rSam0=unique(r);
 % if length(r)>Resolution
 %   nk=length(r)-Resolution;
@@ -898,7 +898,7 @@ end
 %     [~,I]=find(ASam==A);
 %     x00(1:k-1,l)=xSam(1:k-1,I(1));
 % end
-lb=[zeros(k-1,1);0];
+lb=zeros(k,1);
 ub=[100*ones(k-1,1);0];
 
 [WeI,ALPM,Rt]=Optimiz(rSam0,xSam,ASam,rSam,x00,lb,ub,k,nn);
@@ -915,7 +915,7 @@ if CoverOlp==1
     disp(['/*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\ (' num2str(L) ') outlaw points found from ' num2str(length(rSam)) ' Sample . /*\ /*\ /*\ /*\ /*\ /*\ /*\ /*\']);
     if L>0
         x00=repmat(100/k,k,L);
-        lb=[zeros(k-1,1);0];
+        lb=zeros(k,1);
         ub=[100.*ones(k-1,1);0];
         
         [WeIA,ALPMA,RtA]=Optimiz(OutR.',xSam,ASam,rSam,x00,lb,ub,k,nn);
