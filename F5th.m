@@ -488,7 +488,7 @@ c=Beq-mean(r);
 end
 %***********************************************  Sample Biulder
 function [x,A,r]=OpO(k,nn)
-nn=k*nn;
+%nn=k*nn;
 % this function just replicate a good sample
 x = randfixedsum(k,nn,100,0,100);
 A=nan(1,nn);
@@ -762,7 +762,7 @@ rr=mean(r1);
 rmin=min(rr);
 rmax=max(rr);
 %% assymetric point distribution
-r =rmin+random('beta',1.5,8,1,Resolution)*(rmax-rmin);%unique([fix(random('beta',1.5,8,1,3*Resolution)*L),1,L]);%betarnd(1.4,10,1,Resolution)*L));
+r =rmin+random('beta',3,4,1,Resolution)*(rmax-rmin);%unique([fix(random('beta',1.5,8,1,3*Resolution)*L),1,L]);%betarnd(1.4,10,1,Resolution)*L));
 r(r<rmin | r>rmax)=[];
 r=[rmin,r];
 rSam0=unique(r);
@@ -776,9 +776,11 @@ rSam0=unique(r);
 % rSam0=[rSam0(1:Stp:L-1),rSam0(L)];
 % ia=[ia(1:Stp:L-1).',ia(L)];
 %rSam0=rSam0(r);
-L=length(r);
+L=length(rSam0);
 x00=ones(k,L).*(100/k);
-
+for l=1:L
+    x00(:,l)=Reversef(rSam0(l));
+end
 % Rt=nan(L,1);
 % ALPM=Rt;
 % WeI=nan(L,k);
@@ -841,8 +843,8 @@ options = optimoptions(@fmincon,'Algorithm','sqp','ConstraintTolerance',10^-4); 
 
 XfX0=-inf;
 for l=1:L
-    Beq= rSam0(l);
-    x0=x00(:,l);
+    Beq= rSam0(L-l+1);
+    x0=x00(:,L-l+1);
     xfinal0=x0;%xfinal00(:,i);
     for j=1:3
         problem = createOptimProblem('fmincon','objective',...
@@ -865,9 +867,9 @@ for l=1:L
         % simulating for the next starting point
         [x,~,A0,r]=Simul(xfinal,nn);
         % Augment initail Sample
-        x=[x,xSam]; %#ok<AGROW>
-        A0=[A0,ASam]; %#ok<AGROW>
-        r=[r,rSam]; %#ok<AGROW>
+        x=[x,xSam,Wx(1:l-1,:).']; %#ok<AGROW>
+        A0=[A0,ASam,A(1:l-1).']; %#ok<AGROW>
+        r=[r,rSam,R(1:l-1).']; %#ok<AGROW>
         % Check whether the xfinal is better than the sampl
         XfX1=min(A0(r>=Beq & isfinite(A0)));%% Notice: it must change to r>Beq ---- r>Beq-Stp & r<Beq+Stp
         if isempty(XfX1)
@@ -890,4 +892,38 @@ end
 Wx(R<-10^9,:)=[];
 A(R<-10^9)=[];
 R(R<-10^9)=[];
+end
+
+function [w]=Reversef(rB)
+% check the weights illegal usage
+% the number of degree of freedome is k-1
+global r1 
+% Extract number of Obsevation
+[~,k] =size(r1);
+W= sym('W',[k,1]);
+%assume(W>=0 & W<=1);
+%assumeAlso(sum(W)==1);
+% Check length of w1
+r=mean(r1);
+J=@(x)(r*x.'-rB)^2;
+
+%Teta=symvar(W);
+
+%
+StartingPoint=repmat(1/k,1,k);
+Aeq=ones(1,k);
+A=[];
+beq = 1;
+b=[];
+nonlcon=[];
+%gradf = @(x)2*(r*x.'-rB)*r; % column gradf
+%hessf =  @(x)(2*ones(k,k));
+
+options = optimoptions('fmincon', ...
+    'SpecifyObjectiveGradient', false, ...
+    'Algorithm','interior-point', ...
+    'Display','final','MaxFunctionEvaluations',10^20);% interior-point %trust-region-reflective
+[x,fval,exitflag] = fmincon(J,StartingPoint,A,b,Aeq,beq,zeros(1,k),ones(1,k),nonlcon,options);
+w=x.'*100;
+
 end
