@@ -461,9 +461,9 @@ end
 function [c,ceq]=fEFC(w1)
 % c is inequlity less than zero
 % ceq is equality with zero
-
+% w1.'
 global r1 Beq%alpha b c a c Tau
-
+w1=w1/100;
 % Extract number of Obsevation
 [~,k] =size(r1);
 c=-1;
