@@ -27,6 +27,7 @@ Dates=r0(:,1);
 r0(:,1)=[];
 
 n =size(r0,1);
+%MPM([],10);
 %
 % end
 % Save Descriptive Statistic
@@ -80,11 +81,9 @@ for s=1:S
     end
     for d=min(Dates):WindowsSize:max(Dates)
         r1=r0(Dates>=d & Dates<d+WindowsSize,:);
-        if DropDominated
-            Asset_NamesDroped=DomAsset(Asset_Names);
-        else
-            Asset_NamesDroped=Asset_Names;
-        end
+        
+        Asset_NamesDroped=DomAsset(Asset_Names,DropDominated,[SenarioName '_Dates' num2str(d) 'To' num2str(d+WindowsSize)]);
+        
         k =size(r1,2);
         % find a reliable Sample
         [x,A,r]=OpO(k,nn,Resolution,JustSimulation);
@@ -124,9 +123,9 @@ end
 if ~exist('out','dir')
     mkdir('out')
 end
-if exist(['out\' SenarioName],'dir')
-    rmdir(['out\' SenarioName],'s');
-end
+% if exist(['out\' SenarioName],'dir')
+%     rmdir(['out\' SenarioName],'s');
+% end
 mkdir(['out\' SenarioName]);
 
 k=size(x,1);
@@ -403,10 +402,21 @@ rBar=repmat(rB,n,1);
 %
 LPM=max(rBar-r,0);
 UMP=max(r-rBar,0);
+
 pminus=sum(LPM>0)/n;
 Pplus=sum(UMP>0)/n;
-A= alpha*pminus*sum(LPM.^a)-b*Pplus*beta*sum(UMP.^c);
 
+LPM(LPM==0)=[];
+UMP(UMP==0)=[];
+if isempty(LPM)
+    LPM=0;
+end
+if isempty(UMP)
+    UMP=0;
+end
+
+A= alpha*pminus*mean(LPM.^a)-b*Pplus*beta*mean(UMP.^c);
+% A=max(A,0);
 rB=mean(r);
 %ObjectiveFunction
 y=A-2*rB;%lambda
@@ -572,6 +582,114 @@ options = optimoptions('fmincon', ...
     'Display','off','MaxFunctionEvaluations',10^20);% interior-point %trust-region-reflective
 [x,fval,exitflag] = fmincon(J,StartingPoint,A,b,Aeq,beq,zeros(1,k),ones(1,k),nonlcon,options);
 w=x.'*100;
+
+end
+% Calculat ALPM for a asset series
+function [A,rB]=ALPMCal(r)
+% check the weights illegal usage
+% the number of degree of freedome is k-1
+global Tau alpha a b c  beta
+[n,~] =size(r);
+
+% Expected return
+if isfinite(Tau)
+    rB=Tau;
+else
+    rB=mean(r);
+end
+rBar=repmat(rB,n,1);
+%
+LPM=max(rBar-r,0);
+UMP=max(r-rBar,0);
+pminus=sum(LPM>0)/n;
+Pplus=sum(UMP>0)/n;
+
+LPM(LPM==0)=[];
+UMP(UMP==0)=[];
+if isempty(LPM)
+    LPM=0;
+end
+if isempty(UMP)
+    UMP=0;
+end
+
+A= alpha*pminus*mean(LPM.^a)-b*Pplus*beta*mean(UMP.^c);
+
+rB=mean(r);
+%ObjectiveFunction
+end
+% Finde Draw ALPMs and previously Dominated Assets
+function [Asset_Names]=DomAsset(Asset_Names,DropDominated,SenarioName)
+global r1
+
+if ~exist('SenarioName','var')
+    SenarioName='Sen';
+end
+if ~exist('out','dir')
+    mkdir('out')
+end
+if exist(['out\' SenarioName],'dir')
+    rmdir(['out\' SenarioName],'s');
+end
+mkdir(['out\' SenarioName]);
+k=size(r1,2);
+A=nan(1,k);
+r=A;
+Dom=zeros(1,k);
+for i=1:k
+    w=[zeros(i-1,1); 100; zeros(k-i,1)];
+    [~,A(i),r(i)]=f(w);%ALPMCal(r1(:,i));
+end
+
+
+% Exporting ALPM Data
+Fxl=dataset(A.',r.','VarNames',{'ALPM','Return'},'obsNames',Asset_Names);
+%export(Fxl,'xlsfile',['out\' SenarioName '\Siml.xlsx']);
+export(Fxl,'file',['out\' SenarioName '\AssetsALpm.txt']);
+clear Fxl
+subplot(2,1,1)
+bar(A,'b');%
+title('ALPMs');
+set(gca,'xticklabel',Asset_Names,'XTickLabelRotation',45);
+%saveas(gcf,['out\' SenarioName '\ALPMs.bmp'])
+subplot(2,1,2)
+bar(r,'b');%
+set(gca,'xticklabel',Asset_Names,'XTickLabelRotation',45);
+title('Returns');
+
+
+
+for i=1:k
+    for j=1:k
+        if A(i)>A(j) && r(i)<r(j)
+            Dom(i)= 1;
+            break;
+        end
+        
+    end
+    
+end
+subplot(2,1,1)
+hold on
+AA=A;
+AA(Dom~=1)=0;
+bar(AA,'r');%
+hold off
+subplot(2,1,2)
+AA=r;
+AA(Dom~=1)=0;
+hold on
+bar(AA,'r');%
+hold off
+
+
+saveas(gcf,['out\' SenarioName '\Rets.bmp'])
+close gcf
+
+if DropDominated
+    r1(:,Dom==1)=[];
+    Asset_Names(Dom==1)=[];
+end
 
 end
 %***********************************************  Sample Biulder
@@ -854,7 +972,8 @@ x=x(any(isfinite(x),2),:);
 end
 % Optimizer
 function [Wx,A,R]=Optimiz(rSam0,xSam,ASam,rSam,x00,lb,ub,k,nn)
-% rSam0 is the point of Constraint r>rSam0(l)
+% rSam0 is the point of Constraint r>=rSam0(l) if rSam0 is empty use
+% optimization without constraint
 % ?Sam is a basic simulation to test the answer quality
 % x00 is the starting points
 % lb and ub are lower and upper bound
@@ -873,11 +992,9 @@ Wx=nan(L,k);
 options = optimoptions(@fmincon,'Algorithm','sqp','ConstraintTolerance',10^-4,'display','off'); % this interior-point algorithm result was so good in the case of two asset model
 % (Other available algorithms: 'active-set', 'sqp', 'trust-region-reflective', 'interior-point')
 % First satring values
-
-XfX0=-inf;
-for l=1:L
-    Beq= rSam0(L-l+1);
-    x0=x00(:,L-l+1);
+if isempty(rSam0)
+    XfX0=-inf;
+    x0=x00(:,1);
     xfinal0=x0;%xfinal00(:,i);
     %for j=1:3
     j=0;
@@ -887,7 +1004,7 @@ for l=1:L
             break;
         end
         problem = createOptimProblem('fmincon','objective',...
-            @fEFO,'x0',x0,'lb',lb,'ub',ub,'options',options,'nonlcon',@fEFC);%,'ConstraintTolerance',10^-4);
+            @fEFO,'x0',x0,'lb',lb,'ub',ub,'options',options);%,'ConstraintTolerance',10^-4);
         % x0 is the stating point, lb the lower bound and up the upper bound in this case nothing has to be changed by user
         % the lastinput is the shadow price or lagrange multiplier
         gs = GlobalSearch('NumStageOnePoints',1000,'NumTrialPoints',4000);
@@ -912,11 +1029,11 @@ for l=1:L
         % simulating for the next starting point
         [x,~,A0,r]=Simul(xfinal,nn);
         % Augment initail Sample
-        x=[x,xSam,Wx(1:l-1,:).']; %#ok<AGROW>
-        A0=[A0,ASam,A(1:l-1).']; %#ok<AGROW>
-        r=[r,rSam,R(1:l-1).']; %#ok<AGROW>
+        x=[x,xSam]; %#ok<AGROW>
+        A0=[A0,ASam]; %#ok<AGROW>
+        r=[r,rSam]; %#ok<AGROW>
         % Check whether the xfinal is better than the sampl
-        XfX1=min(A0(r>=Beq & isfinite(A0)));%% Notice: it must change to r>Beq ---- r>Beq-Stp & r<Beq+Stp
+        XfX1=min(A0(isfinite(A0)));%
         if isempty(XfX1)
             break;
         elseif XfX<=XfX1
@@ -927,16 +1044,73 @@ for l=1:L
         
         x0=x(:,I(1));
     end
-    [~,A(l),R(l)]=f(xfinal0);
-    Wx(l,:)=xfinal0.';
-    %home;
-    disp('------------------------------------------------');
-    disp([num2str(round(100*l/(L+1),1)) ' Percent is completed.']);
-    disp('------------------------------------------------');
+    [~,A(1),R(1)]=f(xfinal0);
+    Wx(1,:)=xfinal0.';
+else
+    XfX0=-inf;
+    for l=1:L
+        Beq= rSam0(L-l+1);
+        x0=x00(:,L-l+1);
+        xfinal0=x0;%xfinal00(:,i);
+        %for j=1:3
+        j=0;
+        while(1)
+            j=j+1;
+            if j>3
+                break;
+            end
+            problem = createOptimProblem('fmincon','objective',...
+                @fEFO,'x0',x0,'lb',lb,'ub',ub,'options',options,'nonlcon',@fEFC);%,'ConstraintTolerance',10^-4);
+            % x0 is the stating point, lb the lower bound and up the upper bound in this case nothing has to be changed by user
+            % the lastinput is the shadow price or lagrange multiplier
+            gs = GlobalSearch('NumStageOnePoints',1000,'NumTrialPoints',4000);
+            disp(['Solving itration #' num2str(j)]);
+            % xfinal is the optimum weght for asset one
+            % XfX is the Valu of objective function
+            [xfinal, XfX,exitflag] = run(gs,problem);
+            xfinal(k)=100-sum(xfinal(1:k-1)); % Correct the Last Element
+            %         if exitflag~=-2 || exitflag~=-8
+            %             xfinal0=xfinal;
+            %             break;
+            %         end
+            
+            
+            if XfX<XfX0 || exitflag~=-2 || exitflag~=-8
+                %             XfX=XfX0;
+                %xfinal=xfinal0;
+                %break;
+                XfX0=XfX;
+                xfinal0=xfinal;
+            end
+            % simulating for the next starting point
+            [x,~,A0,r]=Simul(xfinal,nn);
+            % Augment initail Sample
+            x=[x,xSam,Wx(1:l-1,:).']; %#ok<AGROW>
+            A0=[A0,ASam,A(1:l-1).']; %#ok<AGROW>
+            r=[r,rSam,R(1:l-1).']; %#ok<AGROW>
+            % Check whether the xfinal is better than the sampl
+            XfX1=min(A0(r>=Beq & isfinite(A0)));%% Notice: it must change to r>Beq ---- r>Beq-Stp & r<Beq+Stp
+            if isempty(XfX1)
+                break;
+            elseif XfX<=XfX1
+                break;
+            end
+            
+            [~,I]=find(A0==XfX1);
+            
+            x0=x(:,I(1));
+        end
+        [~,A(l),R(l)]=f(xfinal0);
+        Wx(l,:)=xfinal0.';
+        %home;
+        disp('------------------------------------------------');
+        disp([num2str(round(100*l/(L+1),1)) ' Percent is completed.']);
+        disp('------------------------------------------------');
+    end
+    Wx(R<-10^9,:)=[];
+    A(R<-10^9)=[];
+    R(R<-10^9)=[];
 end
-Wx(R<-10^9,:)=[];
-A(R<-10^9)=[];
-R(R<-10^9)=[];
 end
 %***********************************************  Efficiency Curve Biulder
 function [Rt,ALPM,WeI]=findEC(xSam,ASam,rSam,k,nn,Resolution,CoverOlp)
@@ -958,14 +1132,22 @@ if L<1
     return
 end
 rr=mean(r1);
-rmin=min(rr);
+%rmin=min(rr);
 rmax=max(rr);
-%% assymetric point distribution
+%% symetric point distribution
 %r =rmin+random('beta',3,4,1,Resolution)*(rmax-rmin);%unique([fix(random('beta',1.5,8,1,3*Resolution)*L),1,L]);%betarnd(1.4,10,1,Resolution)*L));
 %r =random('uni',rmin,rmax,1,Resolution);%unique([fix(random('beta',1.5,8,1,3*Resolution)*L),1,L]);%betarnd(1.4,10,1,Resolution)*L));
+[~,~,rmin]=Optimiz([],xSam,ASam,rSam,ones(k,1).*(100/k),zeros(k,1),[100*ones(k-1,1);0],k,nn);
+disp(['The Return Range is ' num2str(rmin) ' to ' num2str(rmax)]);
 r=rmin:(rmax-rmin)/Resolution:rmax;
-r(r<rmin | r>rmax)=[];
 
+r(r<rmin | r>rmax)=[];
+if isempty(r)
+    warning('-------------------------------------------------');
+    warning('there exist just one point in Efficiency Frontier');
+    warning('-------------------------------------------------');
+    r=rmax;
+end
 r=[rmin,r,rmax];
 rSam0=unique(r);
 % if length(r)>Resolution
@@ -1023,56 +1205,10 @@ end
 
 %%
 % refine data
-[WeI,ALPM,Rt]=refinery(WeI,ALPM,Rt);
+%[WeI,ALPM,Rt]=refinery(WeI,ALPM,Rt);
+
 %home;
 disp('**************%*********%********* efficieny Curve is completed. ****%********%**********');
-end
-% Finde Dominated Assets
-function [Asset_Names]=DomAsset(Asset_Names)
-global r1
-k=size(r1,2);
-A=nan(1,k);
-r=A;
-Dom=zeros(1,k);
-for i=1:k
-    [A(i),r(i)]=ALPMCal(r1(:,i));
-end
-for i=1:k
-    for j=1:k
-        if A(i)>A(j) && r(i)<r(j)
-            Dom(i)= 1;
-            break;
-        end
-        
-    end
-    
-end
-r1(:,Dom==1)=[];
-Asset_Names(Dom==1)=[];
-end
-%####################### ALPM Calculator
-function [A,rB]=ALPMCal(r)
-% check the weights illegal usage
-% the number of degree of freedome is k-1
-global Tau alpha a b c  beta
-[n,~] =size(r);
-
-% Expected return
-if isfinite(Tau)
-    rB=Tau;
-else
-    rB=mean(r);
-end
-rBar=repmat(rB,n,1);
-%
-LPM=max(rBar-r,0);
-UMP=max(r-rBar,0);
-pminus=sum(LPM>0)/n;
-Pplus=sum(UMP>0)/n;
-A= alpha*pminus*sum(LPM.^a)-b*Pplus*beta*sum(UMP.^c);
-
-rB=mean(r);
-%ObjectiveFunction
 end
 %{
 
