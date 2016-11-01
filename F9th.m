@@ -1,4 +1,4 @@
-function F8th
+function F9th
 % al & bt must be grater than one.. according to paper
 % this code drop simulating around optimum point
 tic;
@@ -41,7 +41,7 @@ n =size(r0,1);
 %         Descriptive(r0(Dates>=d & Dates<d+WindowsSize,:),[SenarioName '_Dates' num2str(d) 'To' num2str(d+WindowsSize)],Asset_Names)
 %     end
 % end
-for s=1:S
+for s=2:S
     SenarioName=Inp.SenarioName{s};
     a=Inp.a(s);
     b=Inp.b(s);
@@ -49,6 +49,7 @@ for s=1:S
     alpha=Inp.alpha(s);
     beta=Inp.beta(s);
     Tau=Inp.Tau(s);
+    PortRet=Inp.Port_Ret(s);% the Rutern Value to biuld the portfo
     WindowsSize=Inp.WindowsSize(s);
     DropDominated=Inp.DropDominated(s);
     JustSimulation=Inp.JustSimulation(s);
@@ -60,7 +61,7 @@ for s=1:S
         WindowsSize=n;
     end
     if isnan(DropDominated)
-        DropDominated=1;
+        DropDominated=0;
     end
     
     
@@ -73,32 +74,57 @@ for s=1:S
     if isempty(SenarioName)
         SenarioName=['Sen' num2str(s)];
     end
+    if ~isnan(PortRet)
+        %Resolution=1;
+        CoverOut=0;
+        if WindowsSize>=n
+            WindowsSize=100;
+        end
+        AsALPM=nan(max(Dates)-WindowsSize-min(Dates)+1,1);
+        AsMP=AsALPM;
+        AsPMP=AsALPM;
+    end
     if isnan(Resolution)
         Resolution=10;
     end
+    
     if isnan(CoverOut)
         CoverOut=0;
     end
-    for d=min(Dates):WindowsSize:max(Dates)
+    % this lines add becuase in the case of windowsSize==n the loop doesnot
+    % started and also if the user put windows size greater than amount of
+    % data we have the outcomes
+    Sd=min(Dates);
+    Ed=max(Dates)-WindowsSize;
+    if Ed<Sd
+        Ed=Sd;
+    end
+    for d=Sd:Ed
         r1=r0(Dates>=d & Dates<d+WindowsSize,:);
         
         Asset_NamesDroped=DomAsset(Asset_Names,DropDominated,[SenarioName '_Dates' num2str(d) 'To' num2str(d+WindowsSize)]);
         
         k =size(r1,2);
         % find a reliable Sample
-        [x,A,r]=OpO(k,nn,Resolution,JustSimulation);
+        [x,A,r,PM]=OpO(k,nn,Resolution,PortRet);
         
-        
+        PortRetA=PM.MV.R;
         % Create Efficiency Curve
         if JustSimulation==0
-            [Rt,ALPM,xFinal]=findEC(x,A,r,k,nn,Resolution,CoverOut);
-            PM=MPM(Rt);
-        else
-            PM=MPM([],Resolution);
+            [Rt,ALPM,xFinal]=findEC(x,A,r,k,nn,Resolution,PortRetA,CoverOut,0);
+            [PM.MSV.R,PMP,PM.MSV.W]=findEC(x,A,r,k,nn,Resolution,PortRetA,CoverOut,1);
+            PM.MSV.A=PMP;
+            for kl=1:length(PMP)
+                [~,PM.MSV.A(kl)]=f(PM.MSV.W(kl));
+            end
+            %PM=MPM(Rt);
+            %         else
+            %             PM=MPM([],Resolution);
         end
         
         
         % plot Grapgh
+        
         if exist('Rt','var')
             Expt(x,A,r,[SenarioName '_Dates' num2str(d) 'To' num2str(d+WindowsSize)],Asset_NamesDroped,PM,Rt,ALPM,xFinal);% Export Simulation data to excell file
             Grph(JustSort,x,A,r,[SenarioName '_Dates' num2str(d) 'To' num2str(d+WindowsSize)],Asset_NamesDroped,PM,Rt,ALPM,xFinal);% plot Graph
@@ -106,12 +132,62 @@ for s=1:S
             Expt(x,A,r,[SenarioName '_Dates' num2str(d) 'To' num2str(d+WindowsSize)],Asset_NamesDroped,PM);% Export Simulation data to excell file
             Grph(JustSort,x,A,r,[SenarioName '_Dates' num2str(d) 'To' num2str(d+WindowsSize)],Asset_NamesDroped,PM);% plot Graph
         end
+        if ~isnan(PortRet)
+            % Store the return of Biult in portfo
+            %***********************************
+            NextR=r0(Dates==d+WindowsSize,:);
+            AsALPM(d)=xFinal*NextR.'/100;
+            AsMP(d)=PM.MV.W*NextR.'/100;
+            AsPMP(d)=PM.MSV.W*NextR.'/100;
+        end
         disp(['************ Senrio: ' [SenarioName '_Dates' num2str(d) 'To' num2str(d+WindowsSize)] ' Was Completed. *****************']);
         disp(['Elapsed Time is: ' datestr(toc/(24*3600), 'HH:MM:SS')]);
+    end
+    % think about comparison
+    if ~isnan(PortRet)
+        plot(AsALPM,'r')
+        hold on
+        plot(AsMP,'b')
+        plot(AsPMP,'g')
+        legend({'ALPm','PM','PMP'})
+        title('Realized Return Comparision');
+        ylabel('Portfo Realized Return');
+        xlabel('Dates');
+        hold off
+        SenarioName=[SenarioName '_Comparision']; %#ok<AGROW>
+        if exist(['out\' SenarioName],'dir')
+            rmdir(['out\' SenarioName],'s');
+        end
+        mkdir(['out\' SenarioName]);
+        
+        saveas(gcf,['out\' SenarioName '\RRC.bmp'])
+        %close gcf
+        Fxl=dataset(AsALPM,AsMP,AsPMP,'VarNames',{'ALPM_RR','PM_RR','PMP_RR'});
+        export(Fxl,'xlsfile',['out\' SenarioName '\RRC.xlsx']);
+        clear Fxl
+        
     end
 end
 
 
+end
+%****************************************** Append two dataset
+function A=AppData(A1,A2)
+n1=size(A1,1);
+n2=size(A2,1);
+n=max(n1,n2);
+if n1<n
+    aa=A1.Properties.VarNames(cellfun(@(x) ~isempty(x),regexpi(A1.Properties.VarNames,'[\w*]')));
+    for i=1:length(aa)
+    A1.(aa{i})(n1+1:n)=nan;
+    end
+elseif n2<n;
+    aa=A2.Properties.VarNames(cellfun(@(x) ~isempty(x),regexpi(A2.Properties.VarNames,'[\w*]')));
+    for i=1:length(aa)
+    A2.(aa{i})(n2+1:n)=nan;
+    end
+end
+A=[A1,A2];
 end
 %****************************************** Data Exporting
 function Expt(x,A,r,SenarioName,Asset_Names,PM,Rt,ALPM,xFinal)
@@ -126,18 +202,25 @@ end
 % if exist(['out\' SenarioName],'dir')
 %     rmdir(['out\' SenarioName],'s');
 % end
-mkdir(['out\' SenarioName]);
+% mkdir(['out\' SenarioName]);
 
 k=size(x,1);
 if  ~exist('Asset_Names','var')
     Asset_Names=cell(1,k);
-    
+    Asset_Names_P=Asset_Names;
+    Asset_Names_PmP=Asset_Names;
     for i=1:k
         Asset_Names{i}=['w' num2str(i)];
+        Asset_Names_P{i}=['w' num2str(i) '_MP'];
+         Asset_Names_PmP{i}=['w' num2str(i) '_PMP'];
     end
 else
+    Asset_Names_P=Asset_Names;
+    Asset_Names_PmP=Asset_Names;
     for i=1:k
         Asset_Names{i}=['WeightOf' Asset_Names{i}];
+        Asset_Names_P{i}=['WeightOf' Asset_Names{i} '_MP'];
+        Asset_Names_PmP{i}=['WeightOf' Asset_Names{i} '_PMP'];
     end
 end
 % Exporting Simulation Data
@@ -149,13 +232,16 @@ clear Fxl
 
 if exist('Rt','var')
     Fxl=[mat2dataset(xFinal,'VarNames',Asset_Names),dataset(ALPM,Rt,'VarNames',{'ALPM','Return'})];
+    Fxl=AppData(Fxl,[mat2dataset(PM.MSV.W,'VarNames',Asset_Names_PmP), dataset(PM.MSV.A,PM.MSV.R,'VarNames',{'Mean_SemiVar_ALPM' 'Mean_SemiVar_Return'})]);
     %export(Fxl,'xlsfile',['out\' SenarioName '\EFA.xlsx'])
 else
     Fxl=dataset();
 end
 % Fxl=cell(k+1+6,2);
 if exist('PM','var')
-    Fxl=[Fxl, dataset(PM.MV.A,PM.MV.R,PM.CV.A,PM.CV.R,PM.MAD.A,PM.MAD.R,'VarNames',{'Mean_Var_ALPM' 'Mean_Var_Return' 'CVaR_ALPM' 'CVaR_Return' 'Absolute_Deviation_ALPM' 'Absolute_Deviation_Return'})];
+    Fxl=AppData(Fxl,[mat2dataset(PM.MV.W,'VarNames',Asset_Names_P), dataset(PM.MV.A,PM.MV.R,'VarNames',{'Mean_Var_ALPM' 'Mean_Var_Return'})]);
+    Fxl=AppData(Fxl, dataset(PM.CV.A,PM.CV.R,PM.MAD.A,PM.MAD.R,'VarNames',{'CVaR_ALPM' 'CVaR_Return' 'Absolute_Deviation_ALPM' 'Absolute_Deviation_Return'}));
+    %Fxl=[Fxl, dataset(PM.MV.A,PM.MV.R,PM.CV.A,PM.CV.R,PM.MAD.A,PM.MAD.R,'VarNames',{'Mean_Var_ALPM' 'Mean_Var_Return' 'CVaR_ALPM' 'CVaR_Return' 'Absolute_Deviation_ALPM' 'Absolute_Deviation_Return'})];
     %export(Fxl0,'xlsfile',['out\' SenarioName '\EFM.xlsx'])
 end
 
@@ -180,6 +266,7 @@ if exist('Rt','var')
     A=[A,ALPM.'];
     r=[r,Rt.'];
 end
+k=size(x,1);
 if  ~exist('Asset_Names','var')
     Asset_Names=cell(1,k);
     
@@ -379,7 +466,12 @@ end
 w1(k+1:end)=[];
 
 % build final Weight
+
 w1(k,1)=1-sum(w1(1:k-1));
+
+w1(w1<0 & w1>-10^-9)=0; % remove approximation error even if
+w1(w1>1 & w1<1+10^-9)=1;
+
 
 % check
 if any(w1>1) || any(w1<0)
@@ -458,7 +550,10 @@ x=x0;
 y=y0;%(I);
 end
 % Simulating Sample around xfinal
-function [x,y,A,r,ASigma]=Simul(xfinal,nn)
+function [x,y,A,r,ASigma]=Simul(xfinal,nn,isPmp)
+if nargin<3
+    isPmp=0;
+end
 k=size(xfinal,1);
 ASigma=xfinal./4;%repmat(0.02,k,1)
 ASigma(xfinal>50)=(1-xfinal(xfinal>50))./4;
@@ -472,24 +567,138 @@ x=x./repmat(sum(x,1),k,1);
 y=nan(1,nn+1);
 A=y;
 r=y;
-[y(1),A(1),r(1)]=f(xfinal);% Add the final point to Sapmle collection
-x=[xfinal,x];
-for i=2:nn+1
-    [y(i),A(i),r(i)]=f(x(:,i));
+if isPmp==0
+    [y(1),A(1),r(1)]=f(xfinal);% Add the final point to Sapmle collection
+    x=[xfinal,x];
+    for i=2:nn+1
+        [y(i),A(i),r(i)]=f(x(:,i));
+    end
+else
+    y(1)=1;
+    A(1)=fEFOP(xfinal);
+    r(1)=fRP(xfinal);% Add the final point to Sapmle collection
+    x=[xfinal,x];
+    for i=2:nn+1
+        y(i)=1;
+        A(i)=fEFOP(x(:,i));
+        r(i)=fRP(x(:,i));
+    end
+    
 end
 x(:,r<-10^9)=[];
 y(r<-10^9)=[];
 A(r<-10^9)=[];
 r(r<-10^9)=[];
+
 end
 % Eficiency Curve *****************************
-%************************************************* Objective
+%************************************************* ALPM Objective
 function [A]=fEFO(w1)
 % Get the ALPM from @f
 
 [~,A]=f(w1);
 
 end
+%************************************************* pMP Objective
+function [SV]=fEFOP(w1)
+%function [y,A,rB]=f(w1)
+% check the weights illegal usage
+% the number of degree of freedome is k-1
+global r1  Tau %alpha b beta a c
+w1=w1./100;
+% Extract number of Obsevation
+[n,k] =size(r1);
+
+% Check length of w1
+if length(w1)<k
+    w1(end+1:k,1)=zeros(k-length(w1),1);
+end
+w1(k+1:end)=[];
+
+% build final Weight
+
+w1(k,1)=1-sum(w1(1:k-1));
+
+w1(w1<0 & w1>-10^-9)=0; % remove approximation error even if
+w1(w1>1 & w1<1+10^-9)=1;
+
+
+% check
+if any(w1>1) || any(w1<0)
+    SV=10^10;
+    %     rB=-10^10;
+    %     y=10^10;
+    return;
+end
+
+% Calc Portfo
+r=r1*w1;
+
+% Expected return
+if isfinite(Tau)
+    rB=Tau;
+else
+    rB=mean(r);
+end
+rBar=repmat(rB,n,1);
+%
+LPM=max(rBar-r,0);
+%UMP=max(r-rBar,0);
+
+%pminus=sum(LPM>0)/n;
+%Pplus=sum(UMP>0)/n;
+
+LPM(LPM==0)=[];
+%UMP(UMP==0)=[];
+if isempty(LPM)
+    LPM=0;
+end
+%if isempty(UMP)
+%   UMP=0;
+%end
+
+SV= mean(LPM.^2);
+% A=max(A,0);
+%rB=mean(r);
+%ObjectiveFunction
+%y=A-2*rB;%lambd
+end
+function [r]=fRP(w1)
+% Return of portfo with the weight of w1
+% check the weights illegal usage
+% the number of degree of freedome is k-1
+global r1 %alpha b beta a c
+w1=w1./100;
+% Extract number of Obsevation
+[~,k] =size(r1);
+
+% Check length of w1
+if length(w1)<k
+    w1(end+1:k,1)=zeros(k-length(w1),1);
+end
+w1(k+1:end)=[];
+
+% build final Weight
+
+w1(k,1)=1-sum(w1(1:k-1));
+
+w1(w1<0 & w1>-10^-9)=0; % remove approximation error even if
+w1(w1>1 & w1<1+10^-9)=1;
+
+
+% check
+if any(w1>1) || any(w1<0)
+    
+    r=-10^10;
+    %     y=10^10;
+    return;
+end
+
+% Calc Portfo
+r=r1*w1;
+r=mean(r);
+end
+
 %********************************************** Constraint
 function [c,ceq]=fEFC(w1)
 % c is inequlity less than zero
@@ -509,6 +718,10 @@ end
 w1(k+1:end)=[];
 % build final Weight
 w1(k,1)=1-sum(w1(1:k-1));
+
+w1(w1<0 & w1>-10^-9)=0; % remove approximation error even if
+w1(w1>1 & w1<1+10^-9)=1;
+
 % check
 if any(w1>1) || any(w1<0)
     return;
@@ -557,7 +770,7 @@ function [w]=Reversef(rB)
 global r1
 % Extract number of Obsevation
 [~,k] =size(r1);
-W= sym('W',[k,1]);
+%W= sym('W',[k,1]);
 %assume(W>=0 & W<=1);
 %assumeAlso(sum(W)==1);
 % Check length of w1
@@ -580,46 +793,13 @@ options = optimoptions('fmincon', ...
     'SpecifyObjectiveGradient', false, ...
     'Algorithm','interior-point', ...
     'Display','off','MaxFunctionEvaluations',10^20);% interior-point %trust-region-reflective
-[x,fval,exitflag] = fmincon(J,StartingPoint,A,b,Aeq,beq,zeros(1,k),ones(1,k),nonlcon,options);
+[x,fval,exitflag] = fmincon(J,StartingPoint,A,b,Aeq,beq,zeros(1,k),ones(1,k),nonlcon,options); %#ok<ASGLU>
 w=x.'*100;
 
 end
-% Calculat ALPM for a asset series
-function [A,rB]=ALPMCal(r)
-% check the weights illegal usage
-% the number of degree of freedome is k-1
-global Tau alpha a b c  beta
-[n,~] =size(r);
 
-% Expected return
-if isfinite(Tau)
-    rB=Tau;
-else
-    rB=mean(r);
-end
-rBar=repmat(rB,n,1);
-%
-LPM=max(rBar-r,0);
-UMP=max(r-rBar,0);
-pminus=sum(LPM>0)/n;
-Pplus=sum(UMP>0)/n;
-
-LPM(LPM==0)=[];
-UMP(UMP==0)=[];
-if isempty(LPM)
-    LPM=0;
-end
-if isempty(UMP)
-    UMP=0;
-end
-
-A= alpha*pminus*mean(LPM.^a)-b*Pplus*beta*mean(UMP.^c);
-
-rB=mean(r);
-%ObjectiveFunction
-end
 % Finde Draw ALPMs and previously Dominated Assets
-function [Asset_Names]=DomAsset(Asset_Names,DropDominated,SenarioName)
+function [Asset_Names]=DomAsset(Asset_Names,DropDominated,SenarioName) %#ok<INUSL>
 global r1
 
 if ~exist('SenarioName','var')
@@ -685,17 +865,21 @@ hold off
 
 saveas(gcf,['out\' SenarioName '\Rets.bmp'])
 close gcf
-
-if DropDominated
-    r1(:,Dom==1)=[];
-    Asset_Names(Dom==1)=[];
-end
+% this is not the case now
+% if DropDominated
+%     r1(:,Dom==1)=[];
+%     Asset_Names(Dom==1)=[];
+% end
 
 end
 %***********************************************  Sample Biulder
-function [x,A,r]=OpO(k,nn,Resolution,JustSimulation)
+function [x,A,r,PM]=OpO(k,nn,Resolution,PortRet)
+
 % this function just replicate a good sample
-PM=MPM([],Resolution);
+if isnan(PortRet)
+    PortRet=[];
+end
+PM=MPM(PortRet,Resolution);
 x00=[PM.MV.W;PM.CV.W;PM.MAD.W].';
 x00(:,any(isnan(x00),1))=[];
 A=[];
@@ -728,65 +912,6 @@ x(:,r<-10^9)=[];
 A(r<-10^9)=[];
 r(r<-10^9)=[];
 disp('************************ Sampling Done *************************');
-
-%{
-% Optimization
-disp('Optimization of Objective Function To Build qualified Sample Started');
-% we use global search instead of local ones
-options = optimoptions(@fmincon, 'Algorithm','sqp'); % this interior-point algorithm result was so good in the case of two asset model
-% (Other available algorithms: 'active-set', 'sqp', 'trust-region-reflective', 'interior-point')'UseParallel', true
-% First satring values
-
-x0=(1/k).*ones(k-1,1);
-lb=zeros(k-1,1);
-ub=ones(k-1,1);
-
-XfX0=-inf;
-
-for j=1:5
-    problem = createOptimProblem('fmincon','objective',...
-        @f,'x0',x0,'lb',lb,'ub',ub,'options',options);
-    % x0 is the stating point, lb the lower bound and up the upper bound in this case nothing has to be changed by user
-    % the lastinput is the shadow price or lagrange multiplier
-    gs = GlobalSearch('NumStageOnePoints',400,'NumTrialPoints',2000);
-    disp(['Solving itration #' num2str(j)]);
-    % xfinal is the optimum weght for asset one
-    % XfX is the Valu of objective function
-    [xfinal, XfX,exitflag] = run(gs,problem);
-    if (XfX>=XfX0 || exitflag==-2 ) && j>1
-        XfX=XfX0;
-        xfinal=xfinal0;
-        break;
-    end
-    
-    xfinal(k)=1-sum(xfinal(1:k-1)); % Correct the Last Element
-    % simulating for the next starting point
-    [x,y,A,r,ASigma]=Simul(xfinal,nn);
-    % Check whether the xfinal is better than the sampl
-    XfX1=min(y(isfinite(y)));
-    if XfX<=XfX1
-        break;
-    end
-    XfX0=XfX;
-    xfinal0=xfinal;
-    [~,I]=find(y==XfX1);
-    
-    x0=x(1:k-1,I(1));
-    lb=x0-ASigma(1:k-1);
-    ub=x0+ASigma(1:k-1);
-    
-end
-x(:,r<-10^9)=[];
-y(r<-10^9)=[];
-A(r<-10^9)=[];
-r(r<-10^9)=[];
-% display the Results
-% disp('Optimization Result listed below:');
-% for i=1:k
-%     disp(['Optimum Asset #' num2str(i) ' Weight:' ,num2str(100*round(xfinal(i),3))]);
-% end
-% disp(['Optimum Value of Objective Function:' ,num2str(round(XfX,3))]);
-%}
 
 end
 function [x,v] = randfixedsum(n,m,s,a,b)
@@ -971,16 +1096,20 @@ R=R(any(isfinite(x),2));
 x=x(any(isfinite(x),2),:);
 end
 % Optimizer
-function [Wx,A,R]=Optimiz(rSam0,xSam,ASam,rSam,x00,lb,ub,k,nn)
+function [Wx,A,R]=Optimiz(rSam0,xSam,ASam,rSam,x00,lb,ub,k,nn,isPmp)
 % rSam0 is the point of Constraint r>=rSam0(l) if rSam0 is empty use
 % optimization without constraint
 % ?Sam is a basic simulation to test the answer quality
 % x00 is the starting points
 % lb and ub are lower and upper bound
 % k and nn are the number of asset and simulation size
+% isPmp defalut is false. PMP or ALPM. True means PMP
 global Beq
 % rSam0=r;
 L=length(rSam0);
+if ~exist('isPmp','var')
+    isPmp=0;
+end
 % k=size(x,1);
 
 R=nan(L,1);
@@ -1003,8 +1132,13 @@ if isempty(rSam0)
         if j>3
             break;
         end
-        problem = createOptimProblem('fmincon','objective',...
-            @fEFO,'x0',x0,'lb',lb,'ub',ub,'options',options);%,'ConstraintTolerance',10^-4);
+        if isPmp
+            problem = createOptimProblem('fmincon','objective',...
+                @fEFOP,'x0',x0,'lb',lb,'ub',ub,'options',options);%,'ConstraintTolerance',10^-4);
+        else
+            problem = createOptimProblem('fmincon','objective',...
+                @fEFO,'x0',x0,'lb',lb,'ub',ub,'options',options);%,'ConstraintTolerance',10^-4);
+        end
         % x0 is the stating point, lb the lower bound and up the upper bound in this case nothing has to be changed by user
         % the lastinput is the shadow price or lagrange multiplier
         gs = GlobalSearch('NumStageOnePoints',1000,'NumTrialPoints',4000);
@@ -1059,8 +1193,15 @@ else
             if j>3
                 break;
             end
-            problem = createOptimProblem('fmincon','objective',...
-                @fEFO,'x0',x0,'lb',lb,'ub',ub,'options',options,'nonlcon',@fEFC);%,'ConstraintTolerance',10^-4);
+            if isPmp
+                problem = createOptimProblem('fmincon','objective',...
+                    @fEFOP,'x0',x0,'lb',lb,'ub',ub,'options',options,'nonlcon',@fEFC);%,'ConstraintTolerance',10^-4);
+                
+            else
+                
+                problem = createOptimProblem('fmincon','objective',...
+                    @fEFO,'x0',x0,'lb',lb,'ub',ub,'options',options,'nonlcon',@fEFC);%,'ConstraintTolerance',10^-4);
+            end
             % x0 is the stating point, lb the lower bound and up the upper bound in this case nothing has to be changed by user
             % the lastinput is the shadow price or lagrange multiplier
             gs = GlobalSearch('NumStageOnePoints',1000,'NumTrialPoints',4000);
@@ -1113,13 +1254,24 @@ else
 end
 end
 %***********************************************  Efficiency Curve Biulder
-function [Rt,ALPM,WeI]=findEC(xSam,ASam,rSam,k,nn,Resolution,CoverOlp)
-disp('Optimization of Efficiency Curve is Started');
+function [Rt,ALPM,WeI]=findEC(xSam,ASam,rSam,k,nn,Resolution,PortRet,CoverOlp,isPmp)
+
 global r1
+if ~exist('isPmp','var')
+    isPmp=0;
+end
+if isPmp
+    disp('PMP :: Optimization of Efficiency Curve is Started');
+else
+    disp('ALPM :: Optimization of Efficiency Curve is Started');
+end
 if nargin<7
     CoverOlp=0;
 end
 if nargin<6
+    PortRet=nan;
+end
+if nargin<5
     Resolution=nan;
 end
 [xSam,ASam,rSam]=refinery(xSam.',ASam.',rSam.');
@@ -1137,9 +1289,15 @@ rmax=max(rr);
 %% symetric point distribution
 %r =rmin+random('beta',3,4,1,Resolution)*(rmax-rmin);%unique([fix(random('beta',1.5,8,1,3*Resolution)*L),1,L]);%betarnd(1.4,10,1,Resolution)*L));
 %r =random('uni',rmin,rmax,1,Resolution);%unique([fix(random('beta',1.5,8,1,3*Resolution)*L),1,L]);%betarnd(1.4,10,1,Resolution)*L));
-[~,~,rmin]=Optimiz([],xSam,ASam,rSam,ones(k,1).*(100/k),zeros(k,1),[100*ones(k-1,1);0],k,nn);
+[~,~,rmin]=Optimiz([],xSam,ASam,rSam,ones(k,1).*(100/k),zeros(k,1),[100*ones(k-1,1);0],k,nn,isPmp);
+disp('-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^');
 disp(['The Return Range is ' num2str(rmin) ' to ' num2str(rmax)]);
-r=rmin:(rmax-rmin)/Resolution:rmax;
+disp('-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^');
+if isnan(PortRet)
+    r=rmin:(rmax-rmin)/Resolution:rmax;
+else
+    r=PortRet(:);
+end
 
 r(r<rmin | r>rmax)=[];
 if isempty(r)
@@ -1148,7 +1306,9 @@ if isempty(r)
     warning('-------------------------------------------------');
     r=rmax;
 end
-r=[rmin,r,rmax];
+if isnan(PortRet)
+    r=[rmin,r,rmax];
+end
 rSam0=unique(r);
 % if length(r)>Resolution
 %   nk=length(r)-Resolution;
@@ -1177,7 +1337,7 @@ end
 lb=zeros(k,1);
 ub=[100*ones(k-1,1);0];
 
-[WeI,ALPM,Rt]=Optimiz(rSam0,xSam,ASam,rSam,x00,lb,ub,k,nn);
+[WeI,ALPM,Rt]=Optimiz(rSam0,xSam,ASam,rSam,x00,lb,ub,k,nn,isPmp);
 
 %%
 %------------------ Find Oulier point
@@ -1194,7 +1354,7 @@ if CoverOlp==1
         lb=zeros(k,1);
         ub=[100.*ones(k-1,1);0];
         
-        [WeIA,ALPMA,RtA]=Optimiz(OutR.',xSam,ASam,rSam,x00,lb,ub,k,nn);
+        [WeIA,ALPMA,RtA]=Optimiz(OutR.',xSam,ASam,rSam,x00,lb,ub,k,nn,isPmp);
         
         WeI=[WeI;WeIA];
         ALPM=[ALPM;ALPMA];
@@ -1205,55 +1365,13 @@ end
 
 %%
 % refine data
-%[WeI,ALPM,Rt]=refinery(WeI,ALPM,Rt);
+%
+[WeI,ALPM,Rt]=refinery(WeI,ALPM,Rt);
 
 %home;
-disp('**************%*********%********* efficieny Curve is completed. ****%********%**********');
+if isPmp
+    disp('**************%*********%********* PMP efficieny Curve is completed. ****%********%**********');
+else
+    disp('**************%*********%********* ALPM efficieny Curve is completed. ****%********%**********');
 end
-%{
-
-% Descriptive Statistic
-function Descriptive(r,Dates,Asset_Names)
-global alpha b beta a c Tau
-
-if ~exist('Dates','var')
-    Dates='DatesUnknown';
 end
-if ~exist('out','dir')
-    mkdir('out')
-end
-if exist(['out\' Dates],'dir')
-    rmdir(['out\' Dates],'s');
-end
-mkdir(['out\' Dates]);
-
-k=size(x,1);
-
-
-Fxl=table();
-Fxl.ParameterName={'a';'alpha';'b';'beta';'c';'Tau'};
-Fxl.ParameterValue=[a;alpha;b;beta;c;Tau];
-writetable(Fxl,['out\' Dates '\table.txt'])
-
-set(0, 'DefaultFigureVisible', 'off')
-
-if  ~exist('Asset_Names','var')
-    Asset_Names=cell(1,k);
-    
-    for i=1:k
-        Asset_Names{i}=['Asset' num2str(i)];
-    end
-end
-k=size(x,1);
-% plot Graph
-for i=1:k
-    try %#ok<TRYNC>
-        hist(r(:,i));% ksdensity
-        title(['Kernel of ' Asset_Names{i}]);
-        saveas(gcf,['out\' Dates '\Kr' Asset_Names{i} '.bmp'])
-        close gcf
-    end
-end
-set(0, 'DefaultFigureVisible', 'on')
-end
-%}

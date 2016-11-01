@@ -1,8 +1,8 @@
 clc
 clear
-S=[0,0;0,10000];
-r=[21;15];
-rB=20;
+S=[1,0,0;0,15,0;0,0,10];
+r=[10;9;15];
+rB=12;
 
 % 
 % x0=0:0.01:1;
@@ -46,4 +46,4 @@ W0=[double(aa.W1),double(aa.W2)]
 %%
 %fun = @(w)w.'*S*w;
 % fmincon(fun,'x0',I/n,'A',r.','b',rB,'Aeq',I','beq',1,'lb',zeros(n,1))
-fmincon(@(w) w.'*S*w,I/n,-r.',-rB,I',1,zeros(n,1),[])%'display','off'
+wf=fmincon(@(w) w.'*S*w,I/n,-r.',-rB,I',1,zeros(n,1),[])%'display','off'
