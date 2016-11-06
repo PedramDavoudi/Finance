@@ -38,10 +38,10 @@ n =size(r0,1);
 %         WindowsSize=n;
 %     end
 %     for  d=min(Dates):WindowsSize:max(Dates)
-%         Descriptive(r0(Dates>=d & Dates<d+WindowsSize,:),[SenarioName '_Dates' num2str(d) 'To' num2str(d+WindowsSize)],Asset_Names)
+%         Descriptive(r0(Dates>=d & Dates<d+WindowsSize,:),[SenarioName '\Dates' num2str(d) 'To' num2str(d+WindowsSize)],Asset_Names)
 %     end
 % end
-for s=3:S
+for s=1:S
     SenarioName=Inp.SenarioName{s};
     a=Inp.a(s);
     b=Inp.b(s);
@@ -102,7 +102,7 @@ for s=3:S
     for d=Sd:Ed
         r1=r0(Dates>=d & Dates<d+WindowsSize,:);
         
-        Asset_NamesDroped=DomAsset(Asset_Names,DropDominated,[SenarioName '_Dates' num2str(d) 'To' num2str(d+WindowsSize)]);
+        Asset_NamesDroped=DomAsset(Asset_Names,DropDominated,[SenarioName '\Dates' num2str(d) 'To' num2str(d+WindowsSize)]);
         
         k =size(r1,2);
         % find a reliable Sample
@@ -112,27 +112,24 @@ for s=3:S
         PortRetA=PM.MV.R;
         % Create Efficiency Curve
         if JustSimulation==0
-            [Rt,ALPM,xFinal]=findEC(xA,A,rA,k,nn,Resolution,PortRetA,CoverOut,0);% ALPM
+            
             [PM.MSV.R,PMP,PM.MSV.W]=findEC(xP,PmA,rP,k,nn,Resolution,PortRetA,CoverOut,1); %PMP
             PM.MSV.A=PMP;
             for kl=1:length(PMP)
                 [~,PM.MSV.A(kl)]=f(PM.MSV.W(kl));
             end
+            % Concentrate PMP result over MP results
+            xA=[xA,PM.MSV.W.'];A=[A,PM.MSV.A.'];rA=[rA,PM.MSV.R.']; %#ok<AGROW>
+            [Rt,ALPM,xFinal]=findEC(xA,A,rA,k,nn,Resolution,PortRetA,CoverOut,0);% ALPM
             %PM=MPM(Rt);
             %         else
             %             PM=MPM([],Resolution);
         end
         
         
-        % plot Grapgh
         
-        if exist('Rt','var')
-            Expt(xA,A,rA,[SenarioName '_Dates' num2str(d) 'To' num2str(d+WindowsSize)],Asset_NamesDroped,PM,Rt,ALPM,xFinal);% Export Simulation data to excell file
-            Grph(JustSort,xA,A,rA,[SenarioName '_Dates' num2str(d) 'To' num2str(d+WindowsSize)],Asset_NamesDroped,PM,Rt,ALPM,xFinal);% plot Graph
-        else
-            Expt(xA,A,rA,[SenarioName '_Dates' num2str(d) 'To' num2str(d+WindowsSize)],Asset_NamesDroped,PM);% Export Simulation data to excell file
-            Grph(JustSort,xA,A,rA,[SenarioName '_Dates' num2str(d) 'To' num2str(d+WindowsSize)],Asset_NamesDroped,PM);% plot Graph
-        end
+        
+        
         if ~isnan(PortRet)
             % Store the return of Biult in portfo
             %***********************************
@@ -140,8 +137,17 @@ for s=3:S
             AsALPM(d)=xFinal*NextR.'/100;
             AsMP(d)=PM.MV.W*NextR.'/100;
             AsPMP(d)=PM.MSV.W*NextR.'/100;
+        else
+            % plot Grapgh
+            if exist('Rt','var')
+                Expt(xA,A,rA,[SenarioName '\Dates' num2str(d) 'To' num2str(d+WindowsSize)],Asset_NamesDroped,PM,Rt,ALPM,xFinal);% Export Simulation data to excell file
+                Grph(JustSort,xA,A,rA,[SenarioName '\Dates' num2str(d) 'To' num2str(d+WindowsSize)],Asset_NamesDroped,PM,Rt,ALPM,xFinal);% plot Graph
+            else
+                Expt(xA,A,rA,[SenarioName '\Dates' num2str(d) 'To' num2str(d+WindowsSize)],Asset_NamesDroped,PM);% Export Simulation data to excell file
+                Grph(JustSort,xA,A,rA,[SenarioName '\Dates' num2str(d) 'To' num2str(d+WindowsSize)],Asset_NamesDroped,PM);% plot Graph
+            end
         end
-        disp(['************ Senrio: ' [SenarioName '_Dates' num2str(d) 'To' num2str(d+WindowsSize)] ' Was Completed. *****************']);
+        disp(['************ Senrio: ' [SenarioName ':: Dates' num2str(d) 'To' num2str(d+WindowsSize)] ' Was Completed. *****************']);
         disp(['Elapsed Time is: ' datestr(toc/(24*3600), 'HH:MM:SS')]);
     end
     % think about comparison
@@ -155,7 +161,7 @@ for s=3:S
         ylabel('Portfo Realized Return');
         xlabel('Dates');
         hold off
-        SenarioName=[SenarioName '_Comparision']; %#ok<AGROW>
+        SenarioName=[SenarioName '\Comparision']; %#ok<AGROW>
         if exist(['out\' SenarioName],'dir')
             rmdir(['out\' SenarioName],'s');
         end
@@ -180,12 +186,12 @@ n=max(n1,n2);
 if n1<n
     aa=A1.Properties.VarNames;%A1.Properties.VarNames(cellfun(@(x) ~isempty(x),regexpi(A1.Properties.VarNames,'[\w*]')));
     for i=1:length(aa)
-    A1.(aa{i})(n1+1:n,1)=nan;
+        A1.(aa{i})(n1+1:n,1)=nan;
     end
 elseif n2<n;
     aa=A2.Properties.VarNames;%A2.Properties.VarNames(cellfun(@(x) ~isempty(x),regexpi(A2.Properties.VarNames,'[\w*]')));
     for i=1:length(aa)
-    A2.(aa{i})(n2+1:n,1)=nan;
+        A2.(aa{i})(n2+1:n,1)=nan;
     end
 end
 A=[A1,A2];
@@ -200,10 +206,12 @@ end
 if ~exist('out','dir')
     mkdir('out')
 end
-% if exist(['out\' SenarioName],'dir')
-%     rmdir(['out\' SenarioName],'s');
-% end
-% mkdir(['out\' SenarioName]);
+
+if ~exist(['out\' SenarioName],'dir')
+    %     rmdir(['out\' SenarioName],'s');
+    mkdir(['out\' SenarioName]);
+end
+save(['out\' SenarioName '\output.mat']);
 
 k=size(x,1);
 if  ~exist('Asset_Names','var')
@@ -213,7 +221,7 @@ if  ~exist('Asset_Names','var')
     for i=1:k
         Asset_Names{i}=['w' num2str(i)];
         Asset_Names_P{i}=['w' num2str(i) '_MP'];
-         Asset_Names_PmP{i}=['w' num2str(i) '_PMP'];
+        Asset_Names_PmP{i}=['w' num2str(i) '_PMP'];
     end
 else
     Asset_Names_P=Asset_Names;
@@ -335,7 +343,7 @@ figure();
 
 hold on
 if exist('Rt','var')
-    plot(ALPM,Rt,'g');
+    plot(ALPM,Rt,'g*');
     legend([get(legend,'string'),{'ALPM'}]);
 else
     plot(A,r,'y . ');%,A0, r0,'r O');Simul
@@ -347,8 +355,8 @@ if exist('PM','var')
     plot(PM.MV.A,PM.MV.R,'b.')%,PM.CV.A,PM.CV.R,'r-.',PM.MAD.A,PM.MAD.R,'c--');
     legend([get(legend,'string'),{'Mean-Variance'}]);%,'CVaR','MAD'}]);
     if isfield(PM,'MSV')
-    plot(PM.MSV.A,PM.MSV.R,'b.')%,PM.CV.A,PM.CV.R,'r-.',PM.MAD.A,PM.MAD.R,'c--');
-    legend([get(legend,'string'),{'Mean-SemiVariance'}]);%,'CVaR','MAD'}]);
+        plot(PM.MSV.A,PM.MSV.R,'c-.')%,PM.CV.A,PM.CV.R,'r-.',PM.MAD.A,PM.MAD.R,'c--');
+        legend([get(legend,'string'),{'Mean-SemiVariance'}]);%,'CVaR','MAD'}]);
     end
 end
 
@@ -360,7 +368,7 @@ hold off
 saveas(gcf,['out\' SenarioName '\EC.bmp'])
 %close gcf
 end
-%$$$$$$$$$$$$$$$$$$$$$$$###### Post Modern portfo Managment
+%$$$$$$$$$$$$$$$$$$$$$$$###### Modern portfo Managment
 function [out]=MPM(ret,NumPoint)
 % Define portfo
 
@@ -609,7 +617,7 @@ function [A]=fEFO(w1)
 [~,A]=f(w1);
 
 end
-%************************************************* pMP Objective 
+%************************************************* pMP Objective
 function [SV]=fEFOP(w1)
 %function [y,A,rB]=f(w1)
 % check the weights illegal usage
