@@ -26,7 +26,7 @@ r0(any(isnan(r0),2),:)=[]; % Remove nan frome the data
 Dates=r0(:,1);
 r0(:,1)=[];
 
-n =size(r0,1);
+[n, kr] =size(r0);
 %MPM([],10);
 %
 % end
@@ -80,6 +80,9 @@ for s=1:S
         if WindowsSize>=n
             WindowsSize=100;
         end
+        xALPM=nan(max(Dates)-WindowsSize-min(Dates)+1,kr);
+        xMP=xALPM;
+        xPMP=xALPM;
         AsALPM=nan(max(Dates)-WindowsSize-min(Dates)+1,1);
         AsMP=AsALPM;
         AsPMP=AsALPM;
@@ -121,6 +124,11 @@ for s=1:S
             % Concentrate PMP result over MP results
             xA=[xA,PM.MSV.W.'];A=[A,PM.MSV.A.'];rA=[rA,PM.MSV.R.']; %#ok<AGROW>
             [Rt,ALPM,xFinal]=findEC(xA,A,rA,k,nn,Resolution,PortRetA,CoverOut,0);% ALPM
+            if isempty(Rt)
+                Rt=zeros(size(PortRetA));
+                ALPM=Rt;
+                xFinal=zeros(length(Rt),kr);
+            end
             %PM=MPM(Rt);
             %         else
             %             PM=MPM([],Resolution);
@@ -134,9 +142,14 @@ for s=1:S
             % Store the return of Biult in portfo
             %***********************************
             NextR=r0(Dates==d+WindowsSize,:);
-            AsALPM(d)=xFinal*NextR.'/100;
-            AsMP(d)=PM.MV.W*NextR.'/100;
-            AsPMP(d)=PM.MSV.W*NextR.'/100;
+            try
+                AsALPM(d)=xFinal*NextR.'/100;
+                AsMP(d)=PM.MV.W*NextR.'/100;
+                AsPMP(d)=PM.MSV.W*NextR.'/100;
+                xALPM(d,:)=xFinal;
+                xMP(d,:)=PM.MV.W;
+                xPMP(d,:)=PM.MSV.W;
+            end
         else
             % plot Grapgh
             if exist('Rt','var')
@@ -169,8 +182,24 @@ for s=1:S
         
         saveas(gcf,['out\' SenarioName '\RRC.bmp'])
         %close gcf
-        Fxl=dataset(AsALPM,AsMP,AsPMP,'VarNames',{'ALPM_RR','PM_RR','PMP_RR'});
+        %Fx1=[xALPM];
+        Fxl=dataset(xALPM,AsALPM,xMP,AsMP,xPMP,AsPMP,'VarNames',{'WoAlpm','ALPM_RR','WoPM','PM_RR','WoPMP','PMP_RR'});
+        DD=length(AsALPM);
+        %  [xALPM,  xMP, xPMP];
         export(Fxl,'xlsfile',['out\' SenarioName '\RRC.xlsx']);
+        Fxl=dataset('xlsfile',['out\' SenarioName '\RRC.xlsx']);
+        aT=Fxl.Properties.VarNames.';
+        EE=length(aT);
+        aT=repmat(aT,DD,1);
+        bT=cell(size(aT));
+        for iiii=1:DD
+            for jjjj=1:EE
+                bT{(iiii-1)*EE+jjjj}=['Period' num2str(iiii)];
+            end
+        end
+        cT=reshape(double(Fxl).',[],1);
+        Fxl=dataset(aT,bT,cT,'VarNames',{'Parameter','perids','value'});
+        export(Fxl,'xlsfile',['out\' SenarioName '\RRC2.xlsx']);
         clear Fxl
         
     end
